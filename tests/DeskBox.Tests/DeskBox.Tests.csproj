@@ -21,6 +21,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\DeskBox.TodoQingdan.Protocol\DeskBox.TodoQingdan.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\DeskBox.TodoQingdanBridge\DeskBox.TodoQingdanBridge.csproj" />
     <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\rust-toolchain.toml" />
     <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.toml" />
     <DeskBoxNativeTestInput Include="$(MSBuildProjectDirectory)\..\..\native\Cargo.lock" />

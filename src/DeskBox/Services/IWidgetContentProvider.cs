@@ -6,7 +6,7 @@ namespace DeskBox.Services;
 internal sealed record WidgetContentProviderContext(
     LocalizationService LocalizationService,
     SettingsService? SettingsService,
-    Func<WidgetConfig, TodoWidgetStore>? TodoStoreFactory,
+    ITodoRepositoryFactory TodoRepositoryFactory,
     Func<WidgetKind, WidgetContentDescriptor> GetDescriptor);
 
 internal interface IWidgetContentProvider

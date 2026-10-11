@@ -108,3 +108,4 @@ store-listing/
 
 # Agent scratch workspace (review/fix iteration artifacts)
 .scratch/
+.opencode

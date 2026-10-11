@@ -60,6 +60,15 @@ internal static class WidgetFirstRunGuideFactory
         TodoWidgetStore store,
         LocalizationService localizationService)
     {
+        return await EnsureTodoGuideAsync(
+            new DeskBoxTodoRepository(store),
+            localizationService);
+    }
+
+    public static async Task<bool> EnsureTodoGuideAsync(
+        ITodoRepository store,
+        LocalizationService localizationService)
+    {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(localizationService);
 

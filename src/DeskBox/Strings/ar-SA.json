@@ -2921,5 +2921,10 @@
   "Widget.UnlockSize": "إلغاء تأمين الحجم",
   "Widget.Shell.Collapse": "طي القطعة",
   "Todo.Due.Custom.Time": "وقت مخصص",
-  "Todo.Detail.EditStep": "تحرير الخطوة"
+  "Todo.Detail.EditStep": "تحرير الخطوة",
+  "Settings.Todo.DataSource.Title": "Todo data source",
+  "Settings.Todo.DataSource.Description": "Choose which task collection this widget displays.",
+  "Settings.Todo.Qingdan.Connection": "TodoQingdan connection",
+  "Settings.Todo.Qingdan.Refresh": "Refresh compatibility",
+  "Settings.Todo.Qingdan.UseLocal": "Use DeskBox local Todo"
 }

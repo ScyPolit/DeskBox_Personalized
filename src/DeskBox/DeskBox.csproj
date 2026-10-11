@@ -173,6 +173,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DeskBox.TodoQingdan.Protocol\DeskBox.TodoQingdan.Protocol.csproj" />
+    <ProjectReference Include="..\DeskBox.TodoQingdanBridge\DeskBox.TodoQingdanBridge.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
     <PackageReference Include="CommunityToolkit.WinUI.Animations" Version="8.2.251219" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.ColorPicker" Version="8.2.251219" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" Version="8.2.251219" />
@@ -192,6 +196,39 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageReference Include="Markdig" Version="1.3.2" />
   </ItemGroup>
+
+  <Target Name="BuildTodoQingdanBridge" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="..\DeskBox.TodoQingdanBridge\DeskBox.TodoQingdanBridge.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration);Platform=$(Platform)" />
+  </Target>
+  <Target Name="CopyTodoQingdanBridge" AfterTargets="Build" DependsOnTargets="BuildTodoQingdanBridge" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <TodoQingdanBridgeBuildDir Condition="'$(Platform)' == 'x64' or '$(Platform)' == 'ARM64'">..\DeskBox.TodoQingdanBridge\bin\$(Platform)\$(Configuration)\net10.0\</TodoQingdanBridgeBuildDir>
+      <TodoQingdanBridgeBuildDir Condition="'$(TodoQingdanBridgeBuildDir)' == ''">..\DeskBox.TodoQingdanBridge\bin\$(Configuration)\net10.0\</TodoQingdanBridgeBuildDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <TodoQingdanBridgeOutput Include="$(TodoQingdanBridgeBuildDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TodoQingdanBridgeOutput)"
+          DestinationFiles="@(TodoQingdanBridgeOutput->'$(TargetDir)TodoQingdanBridge\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishTodoQingdanBridge" AfterTargets="Publish" Condition="'$(DesignTimeBuild)' != 'true' and '$(RuntimeIdentifier)' != ''">
+    <PropertyGroup>
+      <TodoQingdanBridgePublishDir>$(IntermediateOutputPath)todo-qingdan-bridge-publish\</TodoQingdanBridgePublishDir>
+    </PropertyGroup>
+    <MSBuild Projects="..\DeskBox.TodoQingdanBridge\DeskBox.TodoQingdanBridge.csproj"
+             Targets="Restore;Publish"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier);PublishAot=true;SelfContained=true;PublishSingleFile=false;PublishDir=$(TodoQingdanBridgePublishDir)" />
+    <ItemGroup>
+      <TodoQingdanBridgePublishOutput Include="$(TodoQingdanBridgePublishDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TodoQingdanBridgePublishOutput)"
+          DestinationFiles="@(TodoQingdanBridgePublishOutput->'$(PublishDir)TodoQingdanBridge\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <None Remove="ThirdParty\Everything\Everything64.dll" />

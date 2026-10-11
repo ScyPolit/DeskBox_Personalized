@@ -155,6 +155,8 @@ internal static class SettingsSearchCatalog
         new("QuickCaptureSettings", "Settings.QuickCapture.ClearRecentTitle", "Settings.QuickCapture.ClearRecentDescription"),
         new("QuickCaptureSettings", "Settings.QuickCapture.ClearTitle", "Settings.QuickCapture.ClearDescription"),
         new("TodoSettings", "Settings.Todo.Title", "Settings.Todo.PageDescription"),
+        new("TodoSettings", "Settings.Todo.DataSource.Title", "Settings.Todo.DataSource.Description"),
+        new("TodoSettings", "Settings.Todo.Qingdan.Connection", null),
         new("TodoSettings", "Settings.QuickCapture.WideLayout.Title", null),
         new("TodoSettings", "Settings.Todo.AutoSelectFirst.Title", "Settings.Todo.AutoSelectFirst.Description"),
         new("TodoSettings", "Settings.Todo.Tabs.Title", null),

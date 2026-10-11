@@ -29,7 +29,8 @@ public sealed partial class WidgetManager
             new WidgetContentFactory(_localizationService),
             _settingsService,
             quickCaptureContentFactory: CreateQuickCaptureSurfaceContent,
-            fileContentFactory: CreateFileSurfaceContent);
+            fileContentFactory: CreateFileSurfaceContent,
+            todoRepositoryFactory: _todoRepositoryFactory);
         return _surfaceContentWindowFactory;
     }
 

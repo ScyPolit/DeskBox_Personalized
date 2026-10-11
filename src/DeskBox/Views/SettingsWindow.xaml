@@ -2081,6 +2081,27 @@ Text="DeskBox" />
                             </toolkit:SettingsCard.HeaderIcon>
                             <ToggleSwitch svc:Localized.AutomationNameKey="Settings.Todo.Title"  Tag="Todo" MinWidth="0" OffContent="" OnContent="" Toggled="FeatureSettingsEnabledToggle_Toggled" IsOn="{Binding Enabled, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.HeaderKey="Settings.Todo.DataSource.Title"
+                            svc:Localized.DescriptionKey="Settings.Todo.DataSource.Description">
+                            <ComboBox MinWidth="190" ItemsSource="{Binding AvailableDataSources}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding DataSource, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsExpander
+                            Visibility="{Binding IsTodoQingdanSource, Converter={StaticResource SettingsBoolToVisibilityConverter}}"
+                            svc:Localized.HeaderKey="Settings.Todo.Qingdan.Connection"
+                            Description="{Binding ConnectionStatusText}"
+                            HorizontalContentAlignment="Stretch">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock VerticalAlignment="Center" Text="{Binding DetectedVersionText}" />
+                                <Button Click="RefreshTodoQingdanCompatibilityButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.Todo.Qingdan.Refresh">
+                                    <FontIcon Glyph="&#xE72C;" />
+                                </Button>
+                                <Button Click="UseLocalTodoButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.Todo.Qingdan.UseLocal">
+                                    <FontIcon Glyph="&#xE72B;" />
+                                </Button>
+                            </StackPanel>
+                        </toolkit:SettingsExpander>
                         <StackPanel Spacing="4">
                             <toolkit:SettingsExpander
                                 Tag="Todo"
@@ -2177,7 +2198,7 @@ Text="DeskBox" />
 
                                 <toolkit:SettingsExpander
                                 Tag="Todo"
-                                IsEnabled="{Binding Enabled}"
+                                IsEnabled="{Binding CanUseDeskBoxReminders}"
                                 Loaded="FeatureSettingsExpander_Loaded"
                                 HorizontalContentAlignment="Stretch"
                                 Description="{Binding ReminderSummaryText}"

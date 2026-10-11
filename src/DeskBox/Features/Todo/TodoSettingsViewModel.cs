@@ -69,6 +69,7 @@ public sealed partial class TodoSettingsViewModel : ObservableObject, IDisposabl
     private readonly Func<string, string> _localize;
     private readonly Func<string, object[], string> _format;
     private readonly Action<Exception> _reportError;
+    private readonly ITodoIntegrationSettings? _integration;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly int[] _previewLineCounts =
         Enumerable.Range(
@@ -114,12 +115,15 @@ public sealed partial class TodoSettingsViewModel : ObservableObject, IDisposabl
         ITodoSettings settings,
         Func<string, string> localize,
         Func<string, object[], string> format,
-        Action<Exception> reportError)
+        Action<Exception> reportError,
+        ITodoIntegrationSettings? integration = null)
     {
         _settings = settings;
         _localize = localize;
         _format = format;
         _reportError = reportError;
+        _integration = integration;
+        if (_integration is not null) _integration.Changed += OnRepositoryChanged;
         Refresh();
     }
 
@@ -128,6 +132,50 @@ public sealed partial class TodoSettingsViewModel : ObservableObject, IDisposabl
     /// waits out an in-flight enable/disable transition.
     /// </summary>
     public Task PendingChange { get; private set; } = Task.CompletedTask;
+
+    public IReadOnlyList<SettingsOption> AvailableDataSources =>
+    [
+        new("DeskBoxLocal", "DeskBox local Todo"),
+        new("TodoQingdan", "TodoQingdan")
+    ];
+
+    public string DataSource
+    {
+        get => _integration?.DataSource ?? "DeskBoxLocal";
+        set
+        {
+            if (_integration is null || string.Equals(value, _integration.DataSource, StringComparison.Ordinal)) return;
+            PendingChange = SetDataSourceAsync(value);
+            OnPropertyChanged();
+        }
+    }
+
+    public bool IsTodoQingdanSource => _integration?.UsesExternalSource == true;
+    public bool CanUseDeskBoxReminders => !IsTodoQingdanSource;
+    public string ConnectionStatusText => _integration?.ConnectionState ?? "not-checked";
+    public string DetectedVersionText => _integration?.DetectedVersion ?? "-";
+    public async Task RefreshTodoQingdanCompatibilityAsync()
+    {
+        if (_integration is null) return;
+        try { await _integration.RefreshCompatibilityAsync(_lifetime.Token); }
+        catch (Exception ex) { _reportError(ex); }
+        OnRepositoryChanged();
+    }
+
+    private async Task SetDataSourceAsync(string source)
+    {
+        try { await _integration!.SetDataSourceAsync(source); }
+        catch (Exception ex) { _reportError(ex); }
+    }
+
+    private void OnRepositoryChanged()
+    {
+        OnPropertyChanged(nameof(DataSource));
+        OnPropertyChanged(nameof(IsTodoQingdanSource));
+        OnPropertyChanged(nameof(CanUseDeskBoxReminders));
+        OnPropertyChanged(nameof(ConnectionStatusText));
+        OnPropertyChanged(nameof(DetectedVersionText));
+    }
 
     /// <summary>
     /// Raised after a user edit committed a Todo text-size write with
@@ -1128,6 +1176,7 @@ public sealed partial class TodoSettingsViewModel : ObservableObject, IDisposabl
     {
         if (_disposed) return;
         _disposed = true;
+        if (_integration is not null) _integration.Changed -= OnRepositoryChanged;
         _lifetime.Cancel();
         _lifetime.Dispose();
     }

@@ -2921,5 +2921,10 @@
   "Widget.UnlockSize": "Größe entsperren",
   "Widget.Shell.Collapse": "Widget zusammenklappen",
   "Todo.Due.Custom.Time": "Benutzerdefinierte Uhrzeit",
-  "Todo.Detail.EditStep": "Schritt bearbeiten"
+  "Todo.Detail.EditStep": "Schritt bearbeiten",
+  "Settings.Todo.DataSource.Title": "Todo data source",
+  "Settings.Todo.DataSource.Description": "Choose which task collection this widget displays.",
+  "Settings.Todo.Qingdan.Connection": "TodoQingdan connection",
+  "Settings.Todo.Qingdan.Refresh": "Refresh compatibility",
+  "Settings.Todo.Qingdan.UseLocal": "Use DeskBox local Todo"
 }

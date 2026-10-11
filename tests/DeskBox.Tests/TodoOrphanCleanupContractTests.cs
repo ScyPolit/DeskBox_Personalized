@@ -2,7 +2,7 @@ namespace DeskBox.Tests;
 
 /// <summary>
 /// Source-scan contract for the todo orphan-data cleanup wiring. The deletion
-/// logic itself is covered by TodoWidgetStoreTests against an isolated root;
+/// logic itself is covered by repository/store tests against an isolated root;
 /// these assertions pin the two WidgetManager call sites so the hooks cannot be
 /// removed silently. House precedent: IdleRuntimeLifecycleContractTests-style
 /// Contains checks over production sources.
@@ -21,7 +21,7 @@ public sealed class TodoOrphanCleanupContractTests
         Assert.True(todoBranch >= 0, "RemoveWidgetAsync must handle WidgetKind.Todo.");
 
         int deleteCall = manager.IndexOf(
-            "await TodoWidgetStore.DeleteForWidgetAsync(config.Id);",
+            "await _todoRepositoryFactory.DeleteForWidgetAsync(config.Id);",
             StringComparison.Ordinal);
         int remainingCheck = manager.IndexOf(
             "hasRemainingTodoWidget",
@@ -56,7 +56,7 @@ public sealed class TodoOrphanCleanupContractTests
             duplicateRegion,
             StringComparison.Ordinal);
         Assert.Contains(
-            "await TodoWidgetStore.DeleteForWidgetAsync(duplicate.Id);",
+            "await _todoRepositoryFactory.DeleteForWidgetAsync(duplicate.Id);",
             duplicateRegion,
             StringComparison.Ordinal);
     }

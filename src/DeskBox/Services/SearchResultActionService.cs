@@ -10,10 +10,14 @@ namespace DeskBox.Services;
 public sealed class SearchResultActionService
 {
     private readonly SettingsService _settingsService;
+    private readonly ITodoRepositoryFactory _todoRepositoryFactory;
 
-    public SearchResultActionService(SettingsService settingsService)
+    public SearchResultActionService(
+        SettingsService settingsService,
+        ITodoRepositoryFactory? todoRepositoryFactory = null)
     {
         _settingsService = settingsService;
+        _todoRepositoryFactory = todoRepositoryFactory ?? DeskBoxTodoRepositoryFactory.Default;
     }
 
     /// <summary>
@@ -38,8 +42,9 @@ public sealed class SearchResultActionService
                 return false;
             }
 
-            var store = new TodoWidgetStore(todoWidget.Id);
-            var data = await store.LoadAsync();
+            ITodoRepository repository = _todoRepositoryFactory.ForWidget(todoWidget.Id);
+            if (!repository.CanWrite) return false;
+            var data = await repository.LoadAsync();
 
             string fileName = Path.GetFileName(path);
             var item = new TodoItem
@@ -60,7 +65,7 @@ public sealed class SearchResultActionService
             });
 
             data.Items.Add(item);
-            await store.SaveAsync(data);
+            await repository.SaveAsync(data);
 
             App.Log($"[SearchAction] Attached '{fileName}' to todo widget '{todoWidget.Id}'.");
             return true;

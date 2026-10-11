@@ -224,7 +224,7 @@ public sealed partial class WidgetManager
         try
         {
             await WidgetFirstRunGuideFactory.EnsureTodoGuideAsync(
-                new TodoWidgetStore(config.Id),
+                _todoRepositoryFactory.ForWidget(config.Id),
                 _localizationService);
         }
         catch (Exception ex)
@@ -1127,9 +1127,9 @@ public sealed partial class WidgetManager
             }
             else if (kind == WidgetKind.Todo)
             {
-                foreach (var todoConfig in configs)
+                foreach (var todoConfig in configs.Where(_ => !_todoRepositoryFactory.UsesExternalSource))
                 {
-                    await new TodoWidgetStore(todoConfig.Id).ClearAsync();
+                    await _todoRepositoryFactory.ForWidget(todoConfig.Id).ClearAsync();
                 }
             }
             else if (kind == WidgetKind.Glance)
@@ -1157,7 +1157,7 @@ public sealed partial class WidgetManager
                     // Duplicate todo instances keep their own stores and
                     // attachments; dropping the config alone used to orphan
                     // them under data/widgets/{id}/.
-                    await TodoWidgetStore.DeleteForWidgetAsync(duplicate.Id);
+                    await _todoRepositoryFactory.DeleteForWidgetAsync(duplicate.Id);
                 }
                 if (!_settingsService.Settings.DeletedWidgetIds.Contains(duplicate.Id))
                 {

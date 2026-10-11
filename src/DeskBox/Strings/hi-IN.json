@@ -2921,5 +2921,10 @@
   "Widget.UnlockSize": "आकार अनलॉक करें",
   "Widget.Shell.Collapse": "विजेट संक्षिप्त करें",
   "Todo.Due.Custom.Time": "कस्टम समय",
-  "Todo.Detail.EditStep": "चरण संपादित करें"
+  "Todo.Detail.EditStep": "चरण संपादित करें",
+  "Settings.Todo.DataSource.Title": "Todo data source",
+  "Settings.Todo.DataSource.Description": "Choose which task collection this widget displays.",
+  "Settings.Todo.Qingdan.Connection": "TodoQingdan connection",
+  "Settings.Todo.Qingdan.Refresh": "Refresh compatibility",
+  "Settings.Todo.Qingdan.UseLocal": "Use DeskBox local Todo"
 }

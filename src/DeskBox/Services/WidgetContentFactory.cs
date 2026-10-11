@@ -163,9 +163,11 @@ public sealed class WidgetContentFactory
             throw new ArgumentException("Todo content requires a Todo widget config.", nameof(config));
         }
 
-        return CreateDetachedContent(
+        return CreateDetachedContentFromRepository(
             config,
-            _ => store ?? new TodoWidgetStore(config.Id),
+            store is null
+                ? DeskBoxTodoRepositoryFactory.Default
+                : new DelegateTodoRepositoryFactory(_ => store),
             settingsService);
     }
 
@@ -179,6 +181,25 @@ public sealed class WidgetContentFactory
         Func<WidgetConfig, TodoWidgetStore>? todoStoreFactory = null,
         SettingsService? settingsService = null)
     {
+        ITodoRepositoryFactory repositoryFactory = todoStoreFactory is null
+            ? DeskBoxTodoRepositoryFactory.Default
+            : new DelegateTodoRepositoryFactory(
+                widgetId => todoStoreFactory(new WidgetConfig
+                {
+                    Id = widgetId,
+                    WidgetKind = WidgetKind.Todo
+                }));
+        return CreateDetachedContentFromRepository(
+            config,
+            repositoryFactory,
+            settingsService);
+    }
+
+    internal IWidgetContent CreateDetachedContentFromRepository(
+        WidgetConfig config,
+        ITodoRepositoryFactory todoRepositoryFactory,
+        SettingsService? settingsService = null)
+    {
         if (!_contentProviders.TryGetValue(config.WidgetKind, out var provider) ||
             !provider.CanCreateDetachedContent)
         {
@@ -189,7 +210,7 @@ public sealed class WidgetContentFactory
         var context = new WidgetContentProviderContext(
             _localizationService,
             settingsService,
-            todoStoreFactory,
+            todoRepositoryFactory,
             GetDescriptor);
         return provider.CreateDetachedContent(config, context);
     }

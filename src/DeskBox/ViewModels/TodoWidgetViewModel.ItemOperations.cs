@@ -12,6 +12,10 @@ public sealed partial class TodoWidgetViewModel
     {
         var data = await _store.LoadAsync();
 
+        OnPropertyChanged(nameof(CanWrite));
+        OnPropertyChanged(nameof(IsReadOnly));
+        OnPropertyChanged(nameof(CanAddInput));
+
         SelectedDetailItem = null;
         IsCreatingDetailItem = false;
         Items.Clear();

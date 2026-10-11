@@ -2921,5 +2921,10 @@
   "Widget.UnlockSize": "サイズのロック解除",
   "Widget.Shell.Collapse": "ウィジェットを折りたたむ",
   "Todo.Due.Custom.Time": "カスタム時刻",
-  "Todo.Detail.EditStep": "ステップを編集"
+  "Todo.Detail.EditStep": "ステップを編集",
+  "Settings.Todo.DataSource.Title": "Todo data source",
+  "Settings.Todo.DataSource.Description": "Choose which task collection this widget displays.",
+  "Settings.Todo.Qingdan.Connection": "TodoQingdan connection",
+  "Settings.Todo.Qingdan.Refresh": "Refresh compatibility",
+  "Settings.Todo.Qingdan.UseLocal": "Use DeskBox local Todo"
 }

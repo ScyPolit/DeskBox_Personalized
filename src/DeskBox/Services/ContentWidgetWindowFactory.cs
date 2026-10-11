@@ -12,7 +12,7 @@ public sealed class ContentWidgetWindowFactory
     private readonly WidgetContentFactory _contentFactory;
     private readonly SettingsService _settingsService;
     private readonly Func<WidgetConfig, IWidgetContent, SettingsService, WidgetContentDescriptor, ContentWidgetWindow> _windowFactory;
-    private readonly Func<WidgetConfig, TodoWidgetStore>? _todoStoreFactory;
+    private readonly ITodoRepositoryFactory _todoRepositoryFactory;
     private readonly Func<WidgetConfig, IWidgetContent>? _quickCaptureContentFactory;
     private readonly Func<WidgetConfig, IWidgetContent>? _fileContentFactory;
 
@@ -22,13 +22,22 @@ public sealed class ContentWidgetWindowFactory
         Func<WidgetConfig, IWidgetContent, SettingsService, WidgetContentDescriptor, ContentWidgetWindow>? windowFactory = null,
         Func<WidgetConfig, TodoWidgetStore>? todoStoreFactory = null,
         Func<WidgetConfig, IWidgetContent>? quickCaptureContentFactory = null,
-        Func<WidgetConfig, IWidgetContent>? fileContentFactory = null)
+        Func<WidgetConfig, IWidgetContent>? fileContentFactory = null,
+        ITodoRepositoryFactory? todoRepositoryFactory = null)
     {
         _contentFactory = contentFactory;
         _settingsService = settingsService;
         _windowFactory = windowFactory ?? ((config, content, settings, descriptor) =>
             new ContentWidgetWindow(config, content, settings, descriptor));
-        _todoStoreFactory = todoStoreFactory;
+        _todoRepositoryFactory = todoRepositoryFactory ??
+            (todoStoreFactory is null
+                ? DeskBoxTodoRepositoryFactory.Default
+                : new DelegateTodoRepositoryFactory(widgetId =>
+                    todoStoreFactory(new WidgetConfig
+                    {
+                        Id = widgetId,
+                        WidgetKind = WidgetKind.Todo
+                    })));
         _quickCaptureContentFactory = quickCaptureContentFactory;
         _fileContentFactory = fileContentFactory;
     }
@@ -71,9 +80,9 @@ public sealed class ContentWidgetWindowFactory
         {
             WidgetKind.QuickCapture => _quickCaptureContentFactory!(config),
             WidgetKind.File => _fileContentFactory!(config),
-            _ => _contentFactory.CreateDetachedContent(
+            _ => _contentFactory.CreateDetachedContentFromRepository(
                 config,
-                _todoStoreFactory,
+                _todoRepositoryFactory,
                 _settingsService)
         });
 

@@ -46,7 +46,7 @@ internal sealed record TodoUndoSnapshot(
 
 public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
 {
-    private readonly TodoWidgetStore _store;
+    private readonly ITodoRepository _store;
     private readonly LocalizationService _localizationService;
     private readonly WidgetConfig _config;
     private readonly SettingsService? _settingsService;
@@ -88,8 +88,21 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         LocalizationService localizationService,
         WidgetConfig config,
         SettingsService? settingsService = null)
+        : this(
+            new DeskBoxTodoRepository(store),
+            localizationService,
+            config,
+            settingsService)
     {
-        _store = store;
+    }
+
+    public TodoWidgetViewModel(
+        ITodoRepository store,
+        LocalizationService localizationService,
+        WidgetConfig config,
+        SettingsService? settingsService = null)
+    {
+        _store = store ?? throw new ArgumentNullException(nameof(store));
         _localizationService = localizationService;
         _config = config;
         _settingsService = settingsService;
@@ -113,6 +126,8 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
     public ObservableCollection<TodoItemViewModel> Items { get; } = [];
 
     public ObservableCollection<TodoItemViewModel> VisibleItems { get; } = [];
+    public bool CanWrite => _store.CanWrite;
+    public bool IsReadOnly => !CanWrite;
 
     // ListView.ItemsSource is object-valued at the WinRT ABI boundary.
     // Keep the typed collection for filtering and project a concrete object
@@ -131,7 +146,7 @@ public sealed partial class TodoWidgetViewModel : ObservableObject, IDisposable
         }
     }
 
-    public bool CanAddInput => !string.IsNullOrWhiteSpace(InputText);
+    public bool CanAddInput => CanWrite && !string.IsNullOrWhiteSpace(InputText);
 
     public bool DraftImportant
     {

@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using DeskBox.Contracts;
 using DeskBox.Features.Todo;
 using DeskBox.Models;
@@ -626,7 +626,7 @@ public sealed class TodoSettingsEditorTests : IDisposable
         Assert.Contains("[WinRT.GeneratedBindableCustomProperty([", bridge, StringComparison.Ordinal);
         Assert.Contains("nameof(Enabled)", bridge, StringComparison.Ordinal);
         Assert.Contains("nameof(DefaultFilter)", bridge, StringComparison.Ordinal);
-        Assert.Equal(29, Regex.Matches(bridge, @"nameof\(").Count);
+        Assert.Equal(35, Regex.Matches(bridge, @"nameof\(").Count);
         Assert.DoesNotContain("nameof(ShowAllTab)", bridge, StringComparison.Ordinal);
         Assert.Equal(33, Regex.Matches(bindableShell, @"nameof\(").Count);
     }

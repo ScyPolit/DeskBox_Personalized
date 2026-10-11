@@ -2921,5 +2921,10 @@
   "Widget.UnlockSize": "解鎖尺寸",
   "Widget.Shell.Collapse": "收起小工具",
   "Todo.Due.Custom.Time": "自訂時間",
-  "Todo.Detail.EditStep": "編輯步驟"
+  "Todo.Detail.EditStep": "編輯步驟",
+  "Settings.Todo.DataSource.Title": "待辦資料來源",
+  "Settings.Todo.DataSource.Description": "選擇此待辦格子顯示的資料。",
+  "Settings.Todo.Qingdan.Connection": "Todo清單連線",
+  "Settings.Todo.Qingdan.Refresh": "重新檢測相容性",
+  "Settings.Todo.Qingdan.UseLocal": "切回 DeskBox 本機待辦"
 }

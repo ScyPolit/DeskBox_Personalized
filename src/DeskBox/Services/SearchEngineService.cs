@@ -18,6 +18,7 @@ public sealed class SearchEngineService : IDisposable
     private readonly LocalizationService _localizationService;
     private readonly EverythingSearchService _everythingSearchService;
     private readonly QuickCaptureService _quickCaptureService;
+    private readonly ITodoRepositoryFactory _todoRepositoryFactory;
     private readonly object _deskBoxContentRefreshLock = new();
     private readonly CancellationTokenSource _deskBoxContentLifetimeCts = new();
     private DeskBoxSearchDocument[] _deskBoxContentSnapshot = [];
@@ -30,12 +31,14 @@ public sealed class SearchEngineService : IDisposable
         SettingsService settingsService,
         LocalizationService localizationService,
         EverythingSearchService everythingSearchService,
-        QuickCaptureService quickCaptureService)
+        QuickCaptureService quickCaptureService,
+        ITodoRepositoryFactory? todoRepositoryFactory = null)
     {
         _settingsService = settingsService;
         _localizationService = localizationService;
         _everythingSearchService = everythingSearchService;
         _quickCaptureService = quickCaptureService;
+        _todoRepositoryFactory = todoRepositoryFactory ?? DeskBoxTodoRepositoryFactory.Default;
         _quickCaptureService.Changed += OnQuickCaptureChanged;
     }
 
@@ -593,7 +596,7 @@ public sealed class SearchEngineService : IDisposable
             {
                 try
                 {
-                    TodoWidgetData data = await new TodoWidgetStore(widget.Id)
+                    TodoWidgetData data = await _todoRepositoryFactory.ForWidget(widget.Id)
                         .LoadAsync()
                         .WaitAsync(cancellationToken)
                         .ConfigureAwait(false);
@@ -751,8 +754,8 @@ public sealed class SearchEngineService : IDisposable
 
             try
             {
-                var store = new TodoWidgetStore(widget.Id);
-                var data = await store.LoadAsync();
+                ITodoRepository repository = _todoRepositoryFactory.ForWidget(widget.Id);
+                var data = await repository.LoadAsync();
 
                 var upcoming = data.Items
                     .Where(i => !i.IsCompleted && i.DueDate.HasValue &&

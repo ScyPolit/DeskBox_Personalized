@@ -21,7 +21,10 @@ public sealed class TodoWidgetContentAdapter :
     IWidgetGroupContentCacheable
 {
     public TodoWidgetContentAdapter(WidgetConfig config, LocalizationService localizationService)
-        : this(config, new TodoWidgetStore(config.Id), localizationService)
+        : this(
+            config,
+            DeskBoxTodoRepositoryFactory.Default.ForWidget(config.Id),
+            localizationService)
     {
     }
 
@@ -32,6 +35,16 @@ public sealed class TodoWidgetContentAdapter :
 
     public TodoWidgetContentAdapter(WidgetConfig config, TodoWidgetStore store, LocalizationService localizationService, SettingsService settingsService)
         : this(config, new TodoWidgetViewModel(store, localizationService, config, settingsService))
+    {
+    }
+
+    public TodoWidgetContentAdapter(WidgetConfig config, ITodoRepository repository, LocalizationService localizationService)
+        : this(config, new TodoWidgetViewModel(repository, localizationService, config))
+    {
+    }
+
+    public TodoWidgetContentAdapter(WidgetConfig config, ITodoRepository repository, LocalizationService localizationService, SettingsService settingsService)
+        : this(config, new TodoWidgetViewModel(repository, localizationService, config, settingsService))
     {
     }
 
@@ -167,6 +180,7 @@ public sealed class TodoWidgetContentAdapter :
 
     public Task AddFromTitleButtonAsync()
     {
+        if (!ViewModel.CanWrite) return Task.CompletedTask;
         if (View is TodoWidgetContent todoContent)
         {
             todoContent.OpenAddEditor();

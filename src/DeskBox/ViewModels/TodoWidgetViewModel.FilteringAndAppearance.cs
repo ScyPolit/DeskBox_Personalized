@@ -70,6 +70,12 @@ public sealed partial class TodoWidgetViewModel
 
     private async Task SaveAsync()
     {
+        if (!CanWrite)
+        {
+            await InitializeAsync();
+            throw new InvalidOperationException("The selected Todo data source is read-only.");
+        }
+
         NormalizeSortOrders();
         var liveIds = new HashSet<string>(
             Items.Select(item => item.Item.Id),

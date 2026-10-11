@@ -146,6 +146,7 @@ public sealed partial class WidgetManager
     private readonly ThemeService _themeService;
     private readonly QuickCaptureService _quickCaptureService;
     private readonly LocalizationService _localizationService;
+    private readonly ITodoRepositoryFactory _todoRepositoryFactory;
     private readonly Func<string> _desktopPathProvider;
     private readonly bool _recycleManagedFolderDeletes;
     private readonly WidgetRegistry _widgetRegistry;
@@ -492,7 +493,8 @@ public sealed partial class WidgetManager
         LocalizationService? localizationService = null,
         TodoSettingsCoordinator? todoSettings = null,
         IQuickCaptureSettings? quickCaptureSettings = null,
-        ISearchFeatureSettings? searchFeatureSettings = null)
+        ISearchFeatureSettings? searchFeatureSettings = null,
+        ITodoRepositoryFactory? todoRepositoryFactory = null)
         : this(
             settingsService,
             fileService,
@@ -504,7 +506,8 @@ public sealed partial class WidgetManager
             recycleManagedFolderDeletes: true,
             todoSettings,
             quickCaptureSettings,
-            searchFeatureSettings)
+            searchFeatureSettings,
+            todoRepositoryFactory)
     {
     }
 
@@ -539,7 +542,8 @@ public sealed partial class WidgetManager
         bool recycleManagedFolderDeletes,
         TodoSettingsCoordinator? todoSettings = null,
         IQuickCaptureSettings? quickCaptureSettings = null,
-        ISearchFeatureSettings? searchFeatureSettings = null)
+        ISearchFeatureSettings? searchFeatureSettings = null,
+        ITodoRepositoryFactory? todoRepositoryFactory = null)
     {
         _settingsService = settingsService;
         _fileSessionRegistration = new(_fileWidgets,
@@ -549,6 +553,7 @@ public sealed partial class WidgetManager
         _todoSettings = todoSettings;
         _quickCaptureSettings = quickCaptureSettings;
         _searchFeatureSettings = searchFeatureSettings;
+        _todoRepositoryFactory = todoRepositoryFactory ?? DeskBoxTodoRepositoryFactory.Default;
         _fileService = fileService;
         _organizerService = organizerService;
         _themeService = themeService;
@@ -2052,7 +2057,7 @@ public sealed partial class WidgetManager
                 // Todo widgets can coexist; deleting one removes its store and
                 // attachments, and only disables the feature when the last
                 // instance goes away (mirroring the Glance branch above).
-                await TodoWidgetStore.DeleteForWidgetAsync(config.Id);
+                await _todoRepositoryFactory.DeleteForWidgetAsync(config.Id);
                 bool hasRemainingTodoWidget = _settingsService.Settings.Widgets.Any(widget =>
                     widget.WidgetKind == WidgetKind.Todo &&
                     !IsDeleted(widget.Id));

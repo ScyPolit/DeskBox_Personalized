@@ -17,9 +17,9 @@ internal sealed class TodoWidgetContentProvider : IWidgetContentProvider
             throw new ArgumentException("Todo content requires a Todo widget config.", nameof(config));
         }
 
-        var store = (context.TodoStoreFactory ?? (widget => new TodoWidgetStore(widget.Id)))(config);
+        ITodoRepository repository = context.TodoRepositoryFactory.ForWidget(config.Id);
         return context.SettingsService is null
-            ? new TodoWidgetContentAdapter(config, store, context.LocalizationService)
-            : new TodoWidgetContentAdapter(config, store, context.LocalizationService, context.SettingsService);
+            ? new TodoWidgetContentAdapter(config, repository, context.LocalizationService)
+            : new TodoWidgetContentAdapter(config, repository, context.LocalizationService, context.SettingsService);
     }
 }

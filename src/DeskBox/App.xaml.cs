@@ -134,6 +134,7 @@ public partial class App : Application
     private QuickCaptureClipboardRuntime? _quickCaptureClipboardRuntime;
     private BackupRuntime? _backupRuntime;
     private readonly ShutdownSequence _shutdownSequence = new(Log);
+    private readonly TodoRepositoryRouter _todoRepositoryFactory = new();
     private static int s_shutdownRequested;
     internal static bool IsShuttingDown => Volatile.Read(ref s_shutdownRequested) != 0;
     private TodoReminderService? _todoReminderService => _todoReminderRuntime?.Current as TodoReminderService;
@@ -1114,6 +1115,7 @@ public partial class App : Application
             // Phase 1: Load settings (must complete first)
             MarkStartupProgress();
             await RunCriticalStartupStepAsync("settings-load", () => SettingsService.LoadAsync());
+            await RunCriticalStartupStepAsync("todo-repository", _todoRepositoryFactory.InitializeAsync);
             RefreshAutomaticBackupOptionsFromSettings();
             SettingsService.SettingsChanged += OnBackupSettingsChanged;
             SettingsService.SettingsChanged += OnMaterialCapabilitySettingsChanged;
@@ -1240,12 +1242,13 @@ public partial class App : Application
             {
                 WidgetManager = new WidgetManager(SettingsService, FileService, OrganizerService,
                     themeService, quickCaptureService, localizationService, _todoSettings,
-                    _quickCaptureSettings, _searchSettings);
+                    _quickCaptureSettings, _searchSettings, _todoRepositoryFactory);
                 WidgetManager.TrayLayerStateChanged += UpdateTrayLayerStateText;
                 // Lets a quick-reveal raise promote already-open DeskBox surfaces
                 // (search popup, settings, desktop organization) above the raised
                 // widget group; the reverse order is handled per-window at show.
                 WidgetManager.AuxiliaryWindowProvider = GetRaisedBandAuxiliaryWindowHandles;
+                _todoRepositoryFactory.Changed += OnTodoRepositoryChanged;
             });
             MarkStartupProgress();
             // Non-null past this point: the critical step above rethrows on
@@ -2065,7 +2068,7 @@ public partial class App : Application
                 LocalizationService,
                 UiDispatcherQueue,
                 ShowTodoReminderNotification,
-                widgetId => new TodoWidgetStore(widgetId),
+                _todoRepositoryFactory,
                 GetTodoNotificationActivationNow);
         }
 #endif
@@ -2073,7 +2076,26 @@ public partial class App : Application
             SettingsService,
             LocalizationService,
             UiDispatcherQueue,
-            ShowTodoReminderNotification);
+            ShowTodoReminderNotification,
+            _todoRepositoryFactory);
+    }
+
+    private void OnTodoRepositoryChanged()
+    {
+        UiDispatcherQueue.TryEnqueue(async () =>
+        {
+            RefreshTodoReminderService();
+            if (WidgetManager is null) return;
+            foreach (ContentWidgetWindow window in WidgetManager.ContentWidgets.Values.Distinct())
+            {
+                if (window.CurrentContent is TodoWidgetContentAdapter todo)
+                {
+                    await todo.RefreshAsync();
+                }
+            }
+            _searchEngineService?.SetDeskBoxContentSearchEnabled(
+                SettingsService.Settings.SearchIncludeDeskBoxContent);
+        });
     }
 
     private void StartNativeNotificationService()
@@ -3349,7 +3371,8 @@ public partial class App : Application
                 _todoSettings ?? throw new InvalidOperationException("Todo settings are not initialized."),
                 LocalizationService.T,
                 (key, args) => LocalizationService.Format(key, args),
-                ex => Log($"[TodoSettings] Update failed: {ex}")),
+                ex => Log($"[TodoSettings] Update failed: {ex}"),
+                _todoRepositoryFactory),
             new DeskBox.Features.Weather.WeatherSettingsViewModel(
                 _featureWidgetsSettings ?? throw new InvalidOperationException("Feature widgets settings are not initialized."),
                 LocalizationService.T,
@@ -5237,8 +5260,11 @@ public partial class App : Application
                 SettingsService,
                 LocalizationService,
                 _everythingSearchService,
-                QuickCaptureService);
-            _searchActionService = new SearchResultActionService(SettingsService);
+                QuickCaptureService,
+                _todoRepositoryFactory);
+            _searchActionService = new SearchResultActionService(
+                SettingsService,
+                _todoRepositoryFactory);
 
             _searchSettings?.OnRuntimeChanged();
 

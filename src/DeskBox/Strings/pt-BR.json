@@ -2921,5 +2921,10 @@
   "Widget.UnlockSize": "Desbloquear tamanho",
   "Widget.Shell.Collapse": "Recolher Widget",
   "Todo.Due.Custom.Time": "Hora personalizada",
-  "Todo.Detail.EditStep": "Editar etapa"
+  "Todo.Detail.EditStep": "Editar etapa",
+  "Settings.Todo.DataSource.Title": "Todo data source",
+  "Settings.Todo.DataSource.Description": "Choose which task collection this widget displays.",
+  "Settings.Todo.Qingdan.Connection": "TodoQingdan connection",
+  "Settings.Todo.Qingdan.Refresh": "Refresh compatibility",
+  "Settings.Todo.Qingdan.UseLocal": "Use DeskBox local Todo"
 }

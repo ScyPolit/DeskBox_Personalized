@@ -1240,6 +1240,16 @@ public sealed partial class SettingsWindow
             todoSettings.ToggleFooterDisplayOption);
     }
 
+    private async void RefreshTodoQingdanCompatibilityButton_Click(object sender, RoutedEventArgs e)
+    {
+        await _todoSettingsViewModel.RefreshTodoQingdanCompatibilityAsync();
+    }
+
+    private void UseLocalTodoButton_Click(object sender, RoutedEventArgs e)
+    {
+        _todoSettingsViewModel.DataSource = nameof(TodoDataSource.DeskBoxLocal);
+    }
+
     private void ContinuousDecorativeAnimationsDropDown_Click(
         object sender,
         RoutedEventArgs e)

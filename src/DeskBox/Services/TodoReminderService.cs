@@ -22,7 +22,7 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
     private readonly LocalizationService _localizationService;
     private readonly DispatcherQueue? _dispatcherQueue;
     private readonly Action<TodoReminderNotification> _notify;
-    private readonly Func<string, TodoWidgetStore> _storeFactory;
+    private readonly ITodoRepositoryFactory _repositoryFactory;
     private readonly Func<DateTimeOffset> _clock;
     private readonly HashSet<string> _sessionNotifiedKeys = new(StringComparer.Ordinal);
 
@@ -30,7 +30,7 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
     // tick. The files only change when the user edits a widget, so a
     // last-write probe answers "unchanged" cheaply while the cached snapshot
     // still lets time-based due transitions fire on schedule.
-    private readonly Dictionary<string, (DateTime WrittenAtUtc, TodoWidgetData Data)> _storeSnapshots = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string? VersionToken, TodoWidgetData Data)> _storeSnapshots = new(StringComparer.Ordinal);
 
     private DispatcherQueueTimer? _timer;
     private bool _isChecking;
@@ -49,13 +49,14 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
         SettingsService settingsService,
         LocalizationService localizationService,
         DispatcherQueue dispatcherQueue,
-        Action<TodoReminderNotification> notify)
+        Action<TodoReminderNotification> notify,
+        ITodoRepositoryFactory? repositoryFactory = null)
         : this(
             settingsService,
             localizationService,
             dispatcherQueue,
             notify,
-            widgetId => new TodoWidgetStore(widgetId),
+            repositoryFactory ?? DeskBoxTodoRepositoryFactory.Default,
             () => DateTimeOffset.Now)
     {
     }
@@ -67,12 +68,29 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
         Action<TodoReminderNotification> notify,
         Func<string, TodoWidgetStore> storeFactory,
         Func<DateTimeOffset> clock)
+        : this(
+            settingsService,
+            localizationService,
+            dispatcherQueue,
+            notify,
+            new DelegateTodoRepositoryFactory(storeFactory),
+            clock)
+    {
+    }
+
+    internal TodoReminderService(
+        SettingsService settingsService,
+        LocalizationService localizationService,
+        DispatcherQueue? dispatcherQueue,
+        Action<TodoReminderNotification> notify,
+        ITodoRepositoryFactory repositoryFactory,
+        Func<DateTimeOffset> clock)
     {
         _settingsService = settingsService;
         _localizationService = localizationService;
         _dispatcherQueue = dispatcherQueue;
         _notify = notify;
-        _storeFactory = storeFactory;
+        _repositoryFactory = repositoryFactory;
         _clock = clock;
     }
 
@@ -140,6 +158,7 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
     {
         var settings = _settingsService.Settings;
         return settings.TodoReminderEnabled &&
+               !_repositoryFactory.UsesExternalSource &&
                FeatureWidgetSettings.IsEnabled(settings, WidgetKind.Todo);
     }
 
@@ -281,7 +300,7 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
                 return false;
             }
 
-            var store = _storeFactory(widget.Id);
+            ITodoRepository store = _repositoryFactory.ForWidget(widget.Id);
             var data = await store.LoadAsync();
             var item = data.Items.FirstOrDefault(item =>
                 string.Equals(item.Id, itemId, StringComparison.Ordinal));
@@ -324,7 +343,7 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
                 return false;
             }
 
-            var store = _storeFactory(widget.Id);
+            ITodoRepository store = _repositoryFactory.ForWidget(widget.Id);
             var data = await store.LoadAsync();
             int itemIndex = data.Items.FindIndex(item =>
                 string.Equals(item.Id, itemId, StringComparison.Ordinal));
@@ -420,11 +439,12 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
 
     private async Task<TodoWidgetData> LoadStoreSnapshotAsync(
         string widgetId,
-        TodoWidgetStore store)
+        ITodoRepository store)
     {
-        DateTime writtenAtUtc = File.GetLastWriteTimeUtc(store.StorePath);
-        if (_storeSnapshots.TryGetValue(widgetId, out (DateTime WrittenAtUtc, TodoWidgetData Data) cached) &&
-            cached.WrittenAtUtc == writtenAtUtc)
+        string? versionToken = store.VersionToken;
+        if (versionToken is not null &&
+            _storeSnapshots.TryGetValue(widgetId, out (string? VersionToken, TodoWidgetData Data) cached) &&
+            string.Equals(cached.VersionToken, versionToken, StringComparison.Ordinal))
         {
             return cached.Data;
         }
@@ -432,8 +452,7 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
         TodoWidgetData data = await store.LoadAsync();
         // Stamp after the load: a write racing the read shows up as a newer
         // timestamp and forces one more reload on the next tick.
-        _storeSnapshots[widgetId] =
-            (File.GetLastWriteTimeUtc(store.StorePath), data);
+        _storeSnapshots[widgetId] = (store.VersionToken, data);
         return data;
     }
 
@@ -443,7 +462,7 @@ public sealed class TodoReminderService : IDisposable, ITodoReminderSession
         int defaultOffsetMinutes,
         List<TodoReminderCandidate> candidates)
     {
-        var store = _storeFactory(widget.Id);
+        ITodoRepository store = _repositoryFactory.ForWidget(widget.Id);
         var data = await LoadStoreSnapshotAsync(widget.Id, store);
         if (_disposed || !ShouldBeRunning())
         {
