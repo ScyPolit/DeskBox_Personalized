@@ -286,6 +286,29 @@ public sealed class AotStage7C1ContractTests
         }
     }
 
+    [Fact]
+    public void DistributionWorkflow_PublishesOnlyExplicitlyRequestedVersionMatchedReleaseAssets()
+    {
+        string workflow = Read(".github/workflows/distribution-audit.yml");
+
+        foreach (string token in new[]
+                 {
+                     "publish-release:",
+                     "default: false",
+                     "inputs.publish-release",
+                     "contents: write",
+                     "Test-DeskBoxDirectReleaseConsistency.ps1 -ExpectedVersion $version",
+                     "DeskBox_Setup_${env:RELEASE_VERSION}_x64.exe",
+                     "DeskBox_Setup_${env:RELEASE_VERSION}_arm64.exe",
+                     "Set-Content -LiteralPath \"$destination.sha256\" -Encoding ascii",
+                     "gh release create $env:RELEASE_TAG",
+                     "--target $env:GITHUB_SHA"
+                 })
+        {
+            Assert.Contains(token, workflow, StringComparison.Ordinal);
+        }
+    }
+
     private static string Read(string relativePath) =>
         File.ReadAllText(TestPaths.FromRepository(relativePath));
 }
