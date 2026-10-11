@@ -253,6 +253,7 @@ public sealed class AotStage7C1ContractTests
                      "windows-2025-vs2026",
                      "windows-11-vs2026-arm",
                      "build-stage-7c1-distribution.ps1",
+                     "-p:PublishAot=true",
                      "stage7c1-${{ matrix.rid }}-distribution",
                      "Cross-architecture evidence manifest",
                      "physicalUserDeviceExecuted",
@@ -263,6 +264,11 @@ public sealed class AotStage7C1ContractTests
         {
             Assert.Contains(token, workflow, StringComparison.Ordinal);
         }
+
+        string todoProtocolAotLock = Read(
+            "src/DeskBox.TodoQingdan.Protocol/packages.aot.lock.json");
+        Assert.Contains("net10.0/win-x64", todoProtocolAotLock, StringComparison.Ordinal);
+        Assert.Contains("net10.0/win-arm64", todoProtocolAotLock, StringComparison.Ordinal);
 
         foreach (string token in new[]
                  {
