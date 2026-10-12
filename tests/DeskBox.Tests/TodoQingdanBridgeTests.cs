@@ -87,13 +87,7 @@ public sealed class TodoQingdanBridgeTests : IDisposable
 
     private async Task<BridgeSession> StartAsync(string productVersion)
     {
-        string bridge = TestPaths.FromRepository(
-            "src/DeskBox.TodoQingdanBridge/bin/x64/Debug/net10.0/DeskBox.TodoQingdanBridge.exe");
-        if (!File.Exists(bridge))
-        {
-            bridge = TestPaths.FromRepository(
-                "src/DeskBox.TodoQingdanBridge/bin/Debug/net10.0/DeskBox.TodoQingdanBridge.exe");
-        }
+        string bridge = ResolveBridgePath(AppContext.BaseDirectory);
         string pipeName = "DeskBox.Tests.TodoQingdan." + Guid.NewGuid().ToString("N");
         var startInfo = new ProcessStartInfo
         {
@@ -114,6 +108,55 @@ public sealed class TodoQingdanBridgeTests : IDisposable
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await pipe.ConnectAsync(timeout.Token);
         return new BridgeSession(process, pipe);
+    }
+
+    [Theory]
+    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\x64\Release\net10.0-windows10.0.22621.0\win-x64", @"src\DeskBox.TodoQingdanBridge\bin\x64\Release\net10.0\win-x64\DeskBox.TodoQingdanBridge.exe")]
+    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\ARM64\Debug\net10.0-windows10.0.22621.0\win-arm64", @"src\DeskBox.TodoQingdanBridge\bin\ARM64\Debug\net10.0\win-arm64\DeskBox.TodoQingdanBridge.exe")]
+    public void ResolveBridgeRelativePathMatchesCurrentTestBuild(
+        string testBaseDirectory,
+        string expected)
+    {
+        Assert.Equal(expected, ResolveBridgeRelativePath(testBaseDirectory));
+    }
+
+    private static string ResolveBridgePath(string testBaseDirectory)
+    {
+        string relativePath = ResolveBridgeRelativePath(testBaseDirectory);
+        string bridge = TestPaths.FromRepository(relativePath);
+        Assert.True(File.Exists(bridge), $"Todo Qingdan bridge was not built at '{bridge}'.");
+        return bridge;
+    }
+
+    private static string ResolveBridgeRelativePath(string testBaseDirectory)
+    {
+        string[] segments = Path.GetFullPath(testBaseDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        int binIndex = Array.FindLastIndex(
+            segments,
+            segment => string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase));
+        if (binIndex < 0 || segments.Length <= binIndex + 3)
+        {
+            throw new InvalidOperationException(
+                $"Cannot derive the Todo Qingdan bridge output from test directory '{testBaseDirectory}'.");
+        }
+
+        string platform = segments[binIndex + 1];
+        string configuration = segments[binIndex + 2];
+        string? runtimeIdentifier = segments
+            .Skip(binIndex + 4)
+            .FirstOrDefault(segment => segment.StartsWith("win-", StringComparison.OrdinalIgnoreCase));
+
+        return Path.Combine(
+            "src",
+            "DeskBox.TodoQingdanBridge",
+            "bin",
+            platform,
+            configuration,
+            "net10.0",
+            runtimeIdentifier ?? string.Empty,
+            "DeskBox.TodoQingdanBridge.exe");
     }
 
     private static void CreateFixture(string path, bool knownShape)
