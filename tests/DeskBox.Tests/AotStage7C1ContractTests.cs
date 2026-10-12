@@ -267,6 +267,12 @@ public sealed class AotStage7C1ContractTests
 
         string todoProtocolAotLock = Read(
             "src/DeskBox.TodoQingdan.Protocol/packages.aot.lock.json");
+        string todoProtocolProject = Read(
+            "src/DeskBox.TodoQingdan.Protocol/DeskBox.TodoQingdan.Protocol.csproj");
+        Assert.Contains(
+            "<RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>",
+            todoProtocolProject,
+            StringComparison.Ordinal);
         Assert.Contains("net10.0/win-x64", todoProtocolAotLock, StringComparison.Ordinal);
         Assert.Contains("net10.0/win-arm64", todoProtocolAotLock, StringComparison.Ordinal);
 
