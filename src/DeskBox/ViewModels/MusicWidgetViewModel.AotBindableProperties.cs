@@ -36,6 +36,7 @@ namespace DeskBox.ViewModels;
     nameof(ThumbnailImage),
     nameof(ThumbnailPlaceholderVisibility),
     nameof(ThumbnailVisibility),
+    nameof(TimelineRowVisibility),
     nameof(Title),
     nameof(TitleTextSize),
     nameof(VolumeTextSize),

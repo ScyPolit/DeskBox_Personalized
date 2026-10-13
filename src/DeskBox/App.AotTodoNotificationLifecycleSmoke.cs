@@ -300,7 +300,7 @@ public partial class App
                 aggregateTitle,
                 aggregateMessage),
             "aggregate-payload-has-no-actions",
-            "The aggregate Todo notification payload was not action-free or had unexpected launch data.");
+            "The aggregate Todo notification payload did not carry the exact view action or had unexpected launch data.");
         RequireAotTodoNotification(
             result,
             result.SystemNotificationAttempted &&
@@ -557,20 +557,34 @@ public partial class App
         string widgetId,
         string itemId,
         string title,
-        string message) =>
-        payload.RootName == "toast" &&
-        payload.Tag == tag &&
-        payload.Group == group &&
-        payload.Texts.SequenceEqual([title, message]) &&
-        string.IsNullOrWhiteSpace(payload.InputId) &&
-        payload.InputSelectionIds.Count == 0 &&
-        payload.Actions.Count == 0 &&
-        HasAotTodoNotificationArguments(
-            payload.LaunchArguments,
-            widgetId,
-            itemId,
-            "all",
-            action: null);
+        string message)
+    {
+        if (payload.RootName != "toast" ||
+            payload.Tag != tag ||
+            payload.Group != group ||
+            !payload.Texts.SequenceEqual([title, message]) ||
+            string.IsNullOrWhiteSpace(payload.InputId) ||
+            payload.InputSelectionIds.Count == 0 ||
+            payload.Actions.Count != 1 ||
+            !HasAotTodoNotificationArguments(
+                payload.LaunchArguments,
+                widgetId,
+                itemId,
+                "all",
+                action: null))
+        {
+            return false;
+        }
+
+        AotTodoNativeNotificationActionEvidence view = payload.Actions.Single();
+        return string.IsNullOrWhiteSpace(view.InputId) &&
+            HasAotTodoNotificationArguments(
+                view.Arguments,
+                widgetId,
+                itemId,
+                "all",
+                action: null);
+    }
 
     private static bool HasAotTodoNotificationArguments(
         IReadOnlyDictionary<string, string> arguments,

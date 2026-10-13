@@ -52,8 +52,6 @@ public static class WindowsCompatibilityService
     private static readonly object s_settingsInstanceGate = new();
     private static UISettings? s_uiSettings;
     private static AccessibilitySettings? s_accessibilitySettings;
-    private static readonly Lazy<System.Reflection.PropertyInfo?> s_advancedEffectsProperty =
-        new(() => typeof(UISettings).GetProperty("AdvancedEffectsEnabled"));
 
     /// <summary>
     /// Raised when Windows' accessibility text-size setting changes. The
@@ -246,30 +244,15 @@ public static class WindowsCompatibilityService
             : MinSystemTextScaleFactor;
 
     /// <summary>
-    /// Advanced effects is not available on every supported Windows contract;
-    /// reflection keeps the Win10 fallback safe while still honoring the user
-    /// setting on newer systems.
+    /// Reads the system transparency-effects switch. The property ships in
+    /// UniversalApiContract v10, which the Windows 10 19041 floor covers, so
+    /// it is referenced directly — the previous reflection lookup kept the
+    /// getter out of Native AOT retail builds and silently degraded to
+    /// "always enabled". The changed-event below stays ApiInformation-guarded
+    /// because its contract is newer than the floor.
     /// </summary>
-    public static bool AreAdvancedEffectsEnabled
-    {
-        get
-        {
-            UISettings? settings = UiSettingsInstance;
-            if (settings is null)
-            {
-                return true;
-            }
-
-            try
-            {
-                return s_advancedEffectsProperty.Value?.GetValue(settings) as bool? ?? true;
-            }
-            catch
-            {
-                return true;
-            }
-        }
-    }
+    public static bool AreAdvancedEffectsEnabled =>
+        UiSettingsInstance?.AdvancedEffectsEnabled ?? true;
 
     public static bool IsHighContrast => ReadAccessibilitySetting(
         static settings => settings.HighContrast,

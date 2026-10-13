@@ -15,4 +15,10 @@ public sealed class MusicSettingsSlice
     /// Music widget layout mode. Valid values: <c>"Auto"</c>, <c>"Cover"</c>, <c>"Controls"</c>.
     /// </summary>
     public string MusicDisplayMode { get; set; } = "Auto";
+
+    /// <summary>
+    /// Whether the progress bar and time labels collapse when the player
+    /// publishes no timeline (position and duration) through SMTC.
+    /// </summary>
+    public bool MusicHideTimelineWhenUnavailable { get; set; } = true;
 }

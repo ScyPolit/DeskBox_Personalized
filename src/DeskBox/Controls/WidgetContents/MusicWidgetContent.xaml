@@ -494,7 +494,8 @@
                 Grid.Row="1"
                 Grid.ColumnSpan="2"
                 Margin="0,3,0,0"
-                ColumnSpacing="8">
+                ColumnSpacing="8"
+                Visibility="{Binding TimelineRowVisibility}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="PositionColumn" Width="34" />
                     <ColumnDefinition Width="*" MinWidth="0" />
@@ -840,7 +841,8 @@
                 Margin="0,2,0,0"
                 HorizontalAlignment="Stretch"
                 MaxWidth="280"
-                ColumnSpacing="6">
+                ColumnSpacing="6"
+                Visibility="{Binding TimelineRowVisibility}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -1052,7 +1054,11 @@
                         </Button>
                     </Grid>
                 </StackPanel>
-                <Grid Grid.Row="1" Margin="0,2,0,0" ColumnSpacing="6">
+                <Grid
+                    Grid.Row="1"
+                    Margin="0,2,0,0"
+                    ColumnSpacing="6"
+                    Visibility="{Binding TimelineRowVisibility}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />

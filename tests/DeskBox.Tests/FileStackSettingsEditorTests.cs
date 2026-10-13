@@ -69,7 +69,6 @@ public sealed class FileStackSettingsEditorTests : IDisposable
             settings =>
             {
                 FileWidgetSettingsSlice fileWidget = settings.Settings.FileWidget;
-                fileWidget.FileStacksEnabled = false;
                 fileWidget.FileStackAutoStacking = true;
                 fileWidget.FileStackGroupBy = FileStackOptionKinds.GroupByCustom;
                 fileWidget.FileStackThreshold = 5;
@@ -84,12 +83,12 @@ public sealed class FileStackSettingsEditorTests : IDisposable
                 ];
             });
 
-        Assert.False(editor.StacksEnabled);
         Assert.True(editor.AutoStacking);
         Assert.Equal(FileStackOptionKinds.GroupByCustom, editor.GroupBy);
         Assert.Equal(5, editor.Threshold);
         Assert.Equal(FileStackOptionKinds.OrderByDateModified, editor.OrderBy);
         Assert.Equal(FileStackOptionKinds.OpenModePopover, editor.OpenMode);
+        Assert.True(editor.IsPopoverOpenMode);
         Assert.Equal(FileStackOptionKinds.PopoverLayoutGrid5, editor.PopoverLayout);
         Assert.Equal(FileStackOptionKinds.PopoverStyleFollowMaterial, editor.PopoverStyle);
         Assert.Equal(FileStackOptionKinds.UnmatchedOther, editor.UnmatchedBehavior);
@@ -97,9 +96,9 @@ public sealed class FileStackSettingsEditorTests : IDisposable
         Assert.Equal("Docs", editor.CustomRules[0].Name);
         Assert.True(editor.ShowCustomRules);
         Assert.False(editor.HasNoRules);
-        // The master switch is off in this preset, so the add-rule action is
-        // gated exactly like the legacy shell's CanAddFileStackCustomRule.
-        Assert.False(editor.CanAddRule);
+        // Auto-stacking is on in this preset, so the add-rule action is
+        // available exactly like the legacy shell's CanAddFileStackCustomRule.
+        Assert.True(editor.CanAddRule);
     }
 
     [Fact]
@@ -135,7 +134,6 @@ public sealed class FileStackSettingsEditorTests : IDisposable
         int notified = 0;
         settings.SettingsChanged += () => notified++;
 
-        editor.StacksEnabled = false;
         editor.AutoStacking = true;
         editor.GroupBy = FileStackOptionKinds.GroupByCustom;
         editor.Threshold = 2;
@@ -146,7 +144,6 @@ public sealed class FileStackSettingsEditorTests : IDisposable
         editor.UnmatchedBehavior = FileStackOptionKinds.UnmatchedOther;
 
         FileWidgetSettingsSlice slice = settings.Settings.FileWidget;
-        Assert.False(slice.FileStacksEnabled);
         Assert.True(slice.FileStackAutoStacking);
         Assert.Equal(FileStackOptionKinds.GroupByCustom, slice.FileStackGroupBy);
         Assert.Equal(2, slice.FileStackThreshold);
@@ -155,12 +152,12 @@ public sealed class FileStackSettingsEditorTests : IDisposable
         Assert.Equal(FileStackOptionKinds.PopoverLayoutAdaptive, slice.FileStackPopoverLayout);
         Assert.Equal(FileStackOptionKinds.PopoverStyleFollowMaterial, slice.FileStackPopoverStyle);
         Assert.Equal(FileStackOptionKinds.UnmatchedOther, slice.FileStackUnmatchedBehavior);
-        Assert.Equal(9, notified);
+        Assert.Equal(8, notified);
 
-        editor.StacksEnabled = false;
+        editor.AutoStacking = true;
         editor.GroupBy = FileStackOptionKinds.GroupByCustom;
         editor.UnmatchedBehavior = FileStackOptionKinds.UnmatchedOther;
-        Assert.Equal(9, notified);
+        Assert.Equal(8, notified);
     }
 
     [Fact]
@@ -176,12 +173,12 @@ public sealed class FileStackSettingsEditorTests : IDisposable
         int notified = 0;
         settings.SettingsChanged += () => notified++;
 
-        coordinator.SetFileStacksEnabled(false);
+        coordinator.SetFileStackAutoStacking(true);
         coordinator.SetFileStackGroupBy(FileStackOptionKinds.GroupByCustom);
         int writesBeforeSync = notified;
 
         editor.SyncPresentation();
-        Assert.False(editor.StacksEnabled);
+        Assert.True(editor.AutoStacking);
         Assert.Equal(FileStackOptionKinds.GroupByCustom, editor.GroupBy);
         Assert.Equal(writesBeforeSync, notified);
 
@@ -195,7 +192,9 @@ public sealed class FileStackSettingsEditorTests : IDisposable
     [Fact]
     public void CustomRuleAggregation_PersistsAddsEditsMovesAndRemovalsThroughOneWriteEntry()
     {
-        (SettingsService settings, _, FileStackSettingsViewModel editor) = CreateEditor(_root);
+        (SettingsService settings, _, FileStackSettingsViewModel editor) = CreateEditor(
+            _root,
+            settings => settings.Settings.FileWidget.FileStackAutoStacking = true);
         int notified = 0;
         settings.SettingsChanged += () => notified++;
 
@@ -228,11 +227,11 @@ public sealed class FileStackSettingsEditorTests : IDisposable
     }
 
     [Fact]
-    public void AddRule_RespectsTheCapAndTheMasterSwitchGate()
+    public void AddRule_RespectsTheCapAndTheAutoStackingGate()
     {
         (SettingsService settings, FileStackSettingsCoordinator coordinator, FileStackSettingsViewModel editor) =
             CreateEditor(_root);
-        coordinator.SetFileStacksEnabled(false);
+        coordinator.SetFileStackAutoStacking(false);
         editor.SyncPresentation();
         Assert.False(editor.CanAddRule);
         int notified = 0;
@@ -242,7 +241,7 @@ public sealed class FileStackSettingsEditorTests : IDisposable
         Assert.Empty(editor.CustomRules);
         Assert.Equal(0, notified);
 
-        editor.StacksEnabled = true;
+        editor.AutoStacking = true;
         for (int i = 0; i < FileStackOptionKinds.MaxCustomRules; i++)
         {
             editor.AddRule();
@@ -300,9 +299,10 @@ public sealed class FileStackSettingsEditorTests : IDisposable
     {
         (_, _, FileStackSettingsViewModel editor) = CreateEditor(_root);
 
-        // Defaults: enabled, auto-stacking off, group-by kind.
+        // Defaults: auto-stacking off, group-by kind, inline open mode.
         Assert.False(editor.ShowCustomRules);
         Assert.True(editor.HasNoRules);
+        Assert.False(editor.IsPopoverOpenMode);
         Assert.Equal("Settings.FileStacks.Status.Manual", editor.SettingsSummaryText);
 
         editor.AutoStacking = true;
@@ -312,15 +312,20 @@ public sealed class FileStackSettingsEditorTests : IDisposable
         Assert.True(editor.ShowCustomRules);
         Assert.Equal("Settings.FileStacks.Status.Custom:0", editor.SettingsSummaryText);
 
-        editor.StacksEnabled = false;
-        Assert.Equal("Settings.FileStacks.Status.Off", editor.SettingsSummaryText);
+        editor.AutoStacking = false;
+        Assert.Equal("Settings.FileStacks.Status.Manual", editor.SettingsSummaryText);
         Assert.False(editor.CanAddRule);
+
+        editor.OpenMode = FileStackOptionKinds.OpenModePopover;
+        Assert.True(editor.IsPopoverOpenMode);
     }
 
     [Fact]
     public void OptionTables_ListCanonicalValuesWithLocalizedNames()
     {
-        (_, _, FileStackSettingsViewModel editor) = CreateEditor(_root);
+        (_, _, FileStackSettingsViewModel editor) = CreateEditor(
+            _root,
+            settings => settings.Settings.FileWidget.FileStackAutoStacking = true);
 
         SettingsOption[] groupBy = [.. editor.AvailableGroupByOptions];
         Assert.Equal(
@@ -510,7 +515,11 @@ public sealed class FileStackSettingsEditorTests : IDisposable
             windowXaml,
             StringComparison.Ordinal);
         Assert.Contains(
-            "IsOn=\"{Binding StacksEnabled, Mode=TwoWay}\"",
+            "IsOn=\"{Binding AutoStacking, Mode=TwoWay}\"",
+            windowXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IsEnabled=\"{Binding IsPopoverOpenMode}\"",
             windowXaml,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -520,7 +529,11 @@ public sealed class FileStackSettingsEditorTests : IDisposable
 
         // The overview page's three typed editor dependency properties.
         Assert.Contains(
-            "IsOn=\"{x:Bind FileStack.StacksEnabled, Mode=TwoWay}\"",
+            "ItemsSource=\"{x:Bind FileStack.AvailableOpenModeOptions, Mode=OneWay}\"",
+            overviewXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "controls:SettingsComboBox.Value=\"{x:Bind FileStack.OpenMode, Mode=TwoWay}\"",
             overviewXaml,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -567,7 +580,8 @@ public sealed class FileStackSettingsEditorTests : IDisposable
 
         // The editor's {Binding} bridge and the shrunken shell bridge.
         Assert.Contains("[WinRT.GeneratedBindableCustomProperty([", bridge, StringComparison.Ordinal);
-        Assert.Contains("nameof(StacksEnabled)", bridge, StringComparison.Ordinal);
+        Assert.Contains("nameof(IsPopoverOpenMode)", bridge, StringComparison.Ordinal);
+        Assert.DoesNotContain("nameof(StacksEnabled)", bridge, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(AvailableOpenModeOptions)", bridge, StringComparison.Ordinal);
         Assert.DoesNotContain("nameof(CustomRules)", bridge, StringComparison.Ordinal);
         Assert.Equal(33, Regex.Matches(bindableShell, @"nameof\(").Count);

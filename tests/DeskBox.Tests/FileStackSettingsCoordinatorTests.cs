@@ -26,7 +26,6 @@ public sealed class FileStackSettingsCoordinatorTests : IDisposable
         int notified = 0;
         settings.SettingsChanged += () => notified++;
 
-        coordinator.SetFileStacksEnabled(false);
         coordinator.SetFileStackAutoStacking(true);
         coordinator.SetFileStackGroupBy(SettingsService.FileStackGroupByCustom);
         coordinator.SetFileStackThreshold(5);
@@ -42,7 +41,6 @@ public sealed class FileStackSettingsCoordinatorTests : IDisposable
         ]);
 
         FileWidgetSettingsSlice slice = settings.Settings.FileWidget;
-        Assert.False(slice.FileStacksEnabled);
         Assert.True(slice.FileStackAutoStacking);
         Assert.Equal(SettingsService.FileStackGroupByCustom, slice.FileStackGroupBy);
         Assert.Equal(5, slice.FileStackThreshold);
@@ -53,14 +51,14 @@ public sealed class FileStackSettingsCoordinatorTests : IDisposable
         Assert.Equal(SettingsService.FileStackUnmatchedOther, slice.FileStackUnmatchedBehavior);
         Assert.Equal(2, slice.FileStackCustomRules.Count);
 
-        // Ten real changes fire ten SettingsChanged passes; unchanged writes
+        // Nine real changes fire nine SettingsChanged passes; unchanged writes
         // must not save again — the stack projection rebuild only reacts to
         // real passes.
-        Assert.Equal(10, notified);
-        coordinator.SetFileStacksEnabled(false);
+        Assert.Equal(9, notified);
+        coordinator.SetFileStackAutoStacking(true);
         coordinator.SetFileStackGroupBy(SettingsService.FileStackGroupByCustom);
         coordinator.SetFileStackUnmatchedBehavior(SettingsService.FileStackUnmatchedOther);
-        Assert.Equal(10, notified);
+        Assert.Equal(9, notified);
     }
 
     [Fact]
@@ -119,7 +117,6 @@ public sealed class FileStackSettingsCoordinatorTests : IDisposable
         var settings = new SettingsService(_root);
         var coordinator = new FileStackSettingsCoordinator(settings);
 
-        coordinator.SetFileStacksEnabled(true);
         coordinator.SetFileStackAutoStacking(true);
         coordinator.SetFileStackGroupBy(SettingsService.FileStackGroupByCustom);
         coordinator.SetFileStackThreshold(2);
@@ -139,7 +136,6 @@ public sealed class FileStackSettingsCoordinatorTests : IDisposable
         await reloaded.LoadAsync();
         FileStackSettingsSnapshot snapshot =
             new FileStackSettingsCoordinator(reloaded).ReadAll();
-        Assert.True(snapshot.FileStacksEnabled);
         Assert.True(snapshot.FileStackAutoStacking);
         Assert.Equal(SettingsService.FileStackGroupByCustom, snapshot.FileStackGroupBy);
         Assert.Equal(2, snapshot.FileStackThreshold);
@@ -193,7 +189,6 @@ public sealed class FileStackSettingsCoordinatorTests : IDisposable
         var coordinator = new FileStackSettingsCoordinator(settings);
         coordinator.Stop();
 
-        Assert.Throws<ObjectDisposedException>(() => coordinator.SetFileStacksEnabled(false));
         Assert.Throws<ObjectDisposedException>(() => coordinator.SetFileStackAutoStacking(true));
         Assert.Throws<ObjectDisposedException>(
             () => coordinator.SetFileStackGroupBy(SettingsService.FileStackGroupByCustom));

@@ -41,4 +41,33 @@ public sealed class MusicTimelineTextTests
 
         Assert.Equal(durationText, positionText);
     }
+
+    [Theory]
+    [InlineData(false, false, 0, false)]   // preference off → row always shown
+    [InlineData(true, true, 90, false)]    // seekable timeline → shown
+    [InlineData(true, true, 0, false)]     // duration known, paused at 0:00 → shown
+    [InlineData(true, false, 90, false)]   // live-style position-only → elapsed row stays
+    [InlineData(true, false, 0, true)]     // nothing reported → row collapses
+    public void ShouldHideTimelineRow_OnlyCollapsesWhenNothingIsKnown(
+        bool hideWhenUnavailable,
+        bool hasSeekableTimeline,
+        double positionSeconds,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            MusicWidgetViewModel.ShouldHideTimelineRow(
+                hideWhenUnavailable,
+                hasSeekableTimeline,
+                TimeSpan.FromSeconds(positionSeconds)));
+    }
+
+    [Fact]
+    public void TimelineRowHideDelay_CoversTrackChangeEventBursts()
+    {
+        // Contract: hiding waits out the transient empty-timeline bursts
+        // players emit around track changes, while staying short enough to
+        // feel immediate to the user.
+        Assert.Equal(TimeSpan.FromSeconds(2), MusicWidgetViewModel.TimelineRowHideDelay);
+    }
 }

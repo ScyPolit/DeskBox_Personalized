@@ -804,16 +804,30 @@ public sealed partial class ContentWidgetWindow
             folderName = _config.Name;
         }
 
+        // The confirmation flyout cannot soft-wrap, so a full path tail-truncates
+        // and hides the folder name; the message shows parent\name instead and
+        // falls back to the bare name when even that exceeds the widest
+        // single-line CJK budget.
+        string parentName = Path.GetFileName(
+            Path.GetDirectoryName(folderPath.TrimEnd('\\', '/')) ?? string.Empty);
+        string displayPath = string.IsNullOrEmpty(parentName)
+            ? folderName
+            : $"{parentName}\\{folderName}";
+        if (displayPath.Length > 48)
+        {
+            displayPath = folderName;
+        }
+
         int? itemCount = await CountTopLevelFolderEntriesAsync(folderPath);
         LocalizationService localization = App.Current.LocalizationService;
         string message = itemCount is int count
             ? localization.Format(
                 "Widget.DeleteManagedFolderConfirmMessage",
                 count,
-                folderPath)
+                displayPath)
             : localization.Format(
                 "Widget.DeleteManagedFolderConfirmMessageUnknownCount",
-                folderPath);
+                displayPath);
         MenuFlyout confirmation =
             WidgetCompactConfirmationMenuBuilder.CreateDeleteConfirmation(
             new WidgetCompactConfirmationOptions(

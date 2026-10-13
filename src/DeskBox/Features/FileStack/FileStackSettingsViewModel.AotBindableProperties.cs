@@ -6,8 +6,9 @@ namespace DeskBox.Features.FileStack;
 // used by that XAML surface in NativeAOT builds, mirroring the
 // GlanceWidgetViewModel bridge pattern. The three compiled x:Bind paths
 // (OpenMode, AvailableOpenModeOptions, CustomRules) and the overview row's
-// two x:Bind paths (StacksEnabled, SettingsSummaryText) resolve through
-// generated compiled bindings and need no bridge entries.
+// three x:Bind paths (OpenMode, AvailableOpenModeOptions,
+// SettingsSummaryText) resolve through generated compiled bindings and
+// need no bridge entries.
 [WinRT.GeneratedBindableCustomProperty([
     nameof(AvailableGroupByOptions),
     nameof(AvailableOrderByOptions),
@@ -19,12 +20,12 @@ namespace DeskBox.Features.FileStack;
     nameof(CanAddRule),
     nameof(HasNoRules),
     nameof(GroupBy),
+    nameof(IsPopoverOpenMode),
     nameof(OrderBy),
     nameof(PopoverLayout),
     nameof(PopoverStyle),
     nameof(PreviewSummaryText),
     nameof(ShowCustomRules),
-    nameof(StacksEnabled),
     nameof(Threshold),
     nameof(UnmatchedBehavior)
 ], [])]

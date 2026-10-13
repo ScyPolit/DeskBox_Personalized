@@ -38,7 +38,8 @@ public sealed record NativeAppNotificationActivation(
 
 public sealed record NativeAppNotificationOptions(
     string? Tag = null,
-    string? Group = null);
+    string? Group = null,
+    AppNotificationScenario? Scenario = null);
 
 public sealed record NativeAppNotificationSnapshot(
     uint Id,
@@ -207,6 +208,11 @@ public sealed class NativeAppNotificationService : IDisposable
                 builder.SetTag(options.Tag);
             }
 
+            if (options?.Scenario is { } scenario)
+            {
+                builder.SetScenario(scenario);
+            }
+
             if (arguments is not null)
             {
                 foreach (var (key, value) in arguments)
@@ -321,6 +327,14 @@ public sealed class NativeAppNotificationService : IDisposable
         if (string.IsNullOrWhiteSpace(group))
         {
             throw new ArgumentException("A notification group is required.", nameof(group));
+        }
+
+        // Removal targets notifications this process previously showed; an
+        // unregistered process owns none, and calling the platform API anyway
+        // would surface a COM failure the caller cannot act on.
+        if (!_isRegistered)
+        {
+            return;
         }
 
         await AppNotificationManager.Default.RemoveByTagAndGroupAsync(tag, group);

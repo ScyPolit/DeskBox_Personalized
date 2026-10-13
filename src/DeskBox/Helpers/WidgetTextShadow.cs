@@ -69,9 +69,9 @@ public static class WidgetTextShadow
     // Background opacity above which a crossed element counts as a plate.
     private const double MaxSeeThroughAlpha = 0.5;
 
-    private static readonly ConditionalWeakTable<TextBlock, ShadowAttachment> Attachments = new();
+    private static readonly ConditionalWeakTable<FrameworkElement, ShadowAttachment> Attachments = new();
     private static readonly List<WeakReference<ShadowAttachment>> KnownAttachments = [];
-    private static readonly List<WeakReference<TextBlock>> PendingTexts = [];
+    private static readonly List<WeakReference<FrameworkElement>> PendingTexts = [];
     private static int _pendingCompactionThreshold = 64;
     private static int _knownCompactionThreshold = 256;
     private static bool _enabled;
@@ -86,6 +86,8 @@ public static class WidgetTextShadow
     /// native icon-label behavior. Called on every appearance pass; only a
     /// change of the effective state touches the texts.
     /// </summary>
+    public static event Action? ShadowSettingChanged;
+
     public static void SetEnabled(bool enabled)
     {
         _enabled = enabled;
@@ -112,6 +114,8 @@ public static class WidgetTextShadow
                 KnownAttachments.RemoveAt(index);
             }
         }
+
+        ShadowSettingChanged?.Invoke();
     }
 
     /// <summary>
@@ -130,8 +134,10 @@ public static class WidgetTextShadow
     public static void SetScope(DependencyObject obj, bool value) => obj.SetValue(ScopeProperty, value);
 
     /// <summary>
-    /// Whether a TextBlock casts the widget text shadow. Set by the app-level
-    /// implicit TextBlock style; a local <c>False</c> opts a text out.
+    /// Whether a text element casts the widget text shadow. Set by the
+    /// app-level implicit TextBlock style (a local <c>False</c> opts a text
+    /// out) or, for elements without their own glyph mask, by the surface
+    /// that owns an <see cref="Microsoft.UI.Xaml.Controls.Image"/> mirror.
     /// </summary>
     public static readonly DependencyProperty CastProperty =
         DependencyProperty.RegisterAttached(
@@ -144,13 +150,41 @@ public static class WidgetTextShadow
 
     public static void SetCast(DependencyObject obj, bool value) => obj.SetValue(CastProperty, value);
 
+    /// <summary>
+    /// Optional edge-color override for elements that have no Foreground of
+    /// their own (the markdown mirror Image): when set, the shadow polarity
+    /// follows this color instead of the element theme.
+    /// </summary>
+    public static readonly DependencyProperty EdgeColorProperty =
+        DependencyProperty.RegisterAttached(
+            "EdgeColor",
+            typeof(Windows.UI.Color?),
+            typeof(WidgetTextShadow),
+            new PropertyMetadata(null, OnEdgeColorChanged));
+
+    public static Windows.UI.Color? GetEdgeColor(DependencyObject obj) =>
+        (Windows.UI.Color?)obj.GetValue(EdgeColorProperty);
+
+    public static void SetEdgeColor(DependencyObject obj, Windows.UI.Color? value) =>
+        obj.SetValue(EdgeColorProperty, value);
+
+    private static void OnEdgeColorChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is FrameworkElement element &&
+            Attachments.TryGetValue(element, out ShadowAttachment? attachment))
+        {
+            ApplyEdge(attachment);
+        }
+    }
+
     private static void OnCastChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is not TextBlock text)
+        if (d is not (TextBlock or Image))
         {
             return;
         }
 
+        FrameworkElement text = (FrameworkElement)d;
         if (Attachments.TryGetValue(text, out ShadowAttachment? attachment))
         {
             Sync(attachment);
@@ -168,9 +202,9 @@ public static class WidgetTextShadow
         }
     }
 
-    private static void Defer(TextBlock text)
+    private static void Defer(FrameworkElement text)
     {
-        PendingTexts.Add(new WeakReference<TextBlock>(text));
+        PendingTexts.Add(new WeakReference<FrameworkElement>(text));
         if (PendingTexts.Count < _pendingCompactionThreshold)
         {
             return;
@@ -182,9 +216,9 @@ public static class WidgetTextShadow
 
     private static void AdoptPendingTexts()
     {
-        foreach (WeakReference<TextBlock> reference in PendingTexts)
+        foreach (WeakReference<FrameworkElement> reference in PendingTexts)
         {
-            if (reference.TryGetTarget(out TextBlock? text) &&
+            if (reference.TryGetTarget(out FrameworkElement? text) &&
                 GetCast(text) &&
                 !Attachments.TryGetValue(text, out _))
             {
@@ -196,7 +230,7 @@ public static class WidgetTextShadow
         _pendingCompactionThreshold = 64;
     }
 
-    private static void Adopt(TextBlock text)
+    private static void Adopt(FrameworkElement text)
     {
         var attachment = new ShadowAttachment(text);
         Attachments.AddOrUpdate(text, attachment);
@@ -217,7 +251,7 @@ public static class WidgetTextShadow
 
     private static void Sync(ShadowAttachment attachment)
     {
-        TextBlock text = attachment.Text;
+        FrameworkElement text = attachment.Element;
         if (attachment.IsOutOfScope)
         {
             return;
@@ -262,7 +296,7 @@ public static class WidgetTextShadow
             return;
         }
 
-        if (!TryResolvePlacement(attachment.Text, out Panel? panel, out List<UIElement>? chain))
+        if (!TryResolvePlacement(attachment.Element, out Panel? panel, out List<UIElement>? chain))
         {
             RemoveHost(attachment, deferred: false);
             return;
@@ -278,13 +312,18 @@ public static class WidgetTextShadow
             attachment.RetryAttempts = 0;
             Visual hostVisual = ElementCompositionPreview.GetElementVisual(host);
             Compositor compositor = hostVisual.Compositor;
-            TextBlock text = attachment.Text;
+            FrameworkElement text = attachment.Element;
 
             attachment.Chain = chain;
-            // GetAlphaMask returns the text's own mask brush: disposing it
+            // GetAlphaMask returns the element's own mask brush: disposing it
             // would close the element's cached mask and poison every later
             // re-activation of the same text (group switches, recycling).
-            attachment.Mask = text.GetAlphaMask();
+            attachment.Mask = TryGetElementMask(text);
+            if (attachment.Mask is null)
+            {
+                throw new InvalidOperationException(
+                    $"No glyph mask available for {text.GetType().Name}.");
+            }
             attachment.Shadow = compositor.CreateDropShadow();
             attachment.Shadow.Mask = attachment.Mask;
             attachment.Sprite = compositor.CreateSpriteVisual();
@@ -344,14 +383,14 @@ public static class WidgetTextShadow
     {
         if (attachment.RetryPending ||
             attachment.RetryAttempts >= MaxAttachRetries ||
-            !attachment.Text.IsLoaded)
+            !attachment.Element.IsLoaded)
         {
             return;
         }
 
         attachment.RetryPending = true;
         attachment.RetryAttempts++;
-        attachment.Text.DispatcherQueue.TryEnqueue(
+        attachment.Element.DispatcherQueue.TryEnqueue(
             DispatcherQueuePriority.Low,
             () =>
             {
@@ -366,7 +405,7 @@ public static class WidgetTextShadow
     /// paint, scroll, clip nor transform, because the host sits outside it.
     /// </summary>
     private static bool TryResolvePlacement(
-        TextBlock text,
+        FrameworkElement text,
         [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Panel? panel,
         [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out List<UIElement>? chain)
     {
@@ -580,10 +619,14 @@ public static class WidgetTextShadow
         }
 
         attachment.IsWatching = true;
-        TextBlock text = attachment.Text;
-        attachment.ForegroundToken = text.RegisterPropertyChangedCallback(
-            TextBlock.ForegroundProperty,
-            (_, _) => ApplyEdge(attachment));
+        FrameworkElement text = attachment.Element;
+        if (text is TextBlock textBlock)
+        {
+            attachment.ForegroundToken = textBlock.RegisterPropertyChangedCallback(
+                TextBlock.ForegroundProperty,
+                (_, _) => ApplyEdge(attachment));
+        }
+
         // Inherited foregrounds re-resolve on a theme flip without a local
         // property change on the text itself.
         attachment.ThemeChangedHandler ??= (_, _) => ApplyEdge(attachment);
@@ -606,8 +649,13 @@ public static class WidgetTextShadow
         }
 
         attachment.IsWatching = false;
-        TextBlock text = attachment.Text;
-        text.UnregisterPropertyChangedCallback(TextBlock.ForegroundProperty, attachment.ForegroundToken);
+        FrameworkElement text = attachment.Element;
+        if (text is TextBlock textBlock)
+        {
+            textBlock.UnregisterPropertyChangedCallback(
+                TextBlock.ForegroundProperty, attachment.ForegroundToken);
+        }
+
         if (attachment.ThemeChangedHandler is not null)
         {
             text.ActualThemeChanged -= attachment.ThemeChangedHandler;
@@ -690,14 +738,34 @@ public static class WidgetTextShadow
             return;
         }
 
-        TextBlock text = attachment.Text;
-        SolidColorBrush? brush = text.Foreground as SolidColorBrush;
+        FrameworkElement element = attachment.Element;
+        Windows.UI.Color? edgeOverride = GetEdgeColor(element);
+        SolidColorBrush? brush = element switch
+        {
+            TextBlock text => text.Foreground as SolidColorBrush,
+            // The markdown mirror Image has no foreground of its own; its
+            // owner keeps the override in sync with the document's semantic
+            // foreground.
+            Image => null,
+            _ => null
+        };
         WatchBrush(attachment, brush);
-        TextShadowEdge edge = brush is not null
-            ? TextShadowPalette.Resolve(brush.Color)
-            : text.ActualTheme == ElementTheme.Dark
+        TextShadowEdge edge;
+        if (edgeOverride is { } overrideColor)
+        {
+            edge = TextShadowPalette.Resolve(overrideColor);
+        }
+        else if (brush is not null)
+        {
+            edge = TextShadowPalette.Resolve(brush.Color);
+        }
+        else
+        {
+            edge = element.ActualTheme == ElementTheme.Dark
                 ? TextShadowPalette.DarkShadow
                 : TextShadowPalette.LightHalo;
+        }
+
         if (attachment.AppliedEdge == edge)
         {
             return;
@@ -711,15 +779,25 @@ public static class WidgetTextShadow
         shadow.StartAnimation("Opacity", opacity);
     }
 
+    // TextBlock and the markdown mirror's Image are the two glyph-mask
+    // sources; RichTextBlock has no GetAlphaMask, which is why the markdown
+    // body shadows through the snapshot mirror instead of its own element.
+    private static CompositionBrush? TryGetElementMask(FrameworkElement element) => element switch
+    {
+        TextBlock text => text.GetAlphaMask(),
+        Image image => image.GetAlphaMask(),
+        _ => null
+    };
+
     private sealed class ShadowAttachment
     {
-        public ShadowAttachment(TextBlock text)
+        public ShadowAttachment(FrameworkElement element)
         {
-            Text = text;
+            Element = element;
             Weak = new WeakReference<ShadowAttachment>(this);
         }
 
-        public TextBlock Text { get; }
+        public FrameworkElement Element { get; }
 
         public WeakReference<ShadowAttachment> Weak { get; }
 

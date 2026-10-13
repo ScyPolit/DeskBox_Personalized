@@ -9,6 +9,7 @@ namespace DeskBox.Features.Music;
     nameof(AvailableDisplayModeOptions),
     nameof(DisplayMode),
     nameof(EnableCoverHoverMotion),
+    nameof(HideTimelineWhenUnavailable),
     nameof(UseArtworkBackdrop)
 ], [])]
 public sealed partial class MusicSettingsViewModel

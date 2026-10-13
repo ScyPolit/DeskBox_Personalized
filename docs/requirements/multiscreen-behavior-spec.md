@@ -1,6 +1,6 @@
 # 多屏行为规格 v2：格子归属屏 + 按显示器组合记忆布局（2026-10-07 定案，已实现）
 
-> **状态**：方案已定案（2026-10-07 Simon 批准第 1 节全部决策），**已实现（阶段 1-4 完成，随 1.5.6 发布）**。2026-10-08 按三路代码审查完成一轮修订（修正 2 处硬错误、1 处 API 语义依赖、补 6 项规则缺口与 4 个场景，明细见附录 E）；2026-10-09 发版前终审再修三处（MoveAll 撤销令牌重校准、重连自动展开条件、手动展开/收起清除断开标志）并将 6.3 文案表中的 ComboBox 长句改为短标签。真机验收矩阵见《multiscreen-behavior-spec-真机验证清单.md》。
+> **状态**：方案已定案（2026-10-07 Simon 批准第 1 节全部决策），**已实现（阶段 1-4 完成，随 1.5.6 发布）**。2026-10-08 按三路代码审查完成一轮修订（修正 2 处硬错误、1 处 API 语义依赖、补 6 项规则缺口与 4 个场景，明细见附录 E）；2026-10-09 发版前终审再修三处（MoveAll 撤销令牌重校准、重连自动展开条件、手动展开/收起清除断开标志）并将 6.3 文案表中的 ComboBox 长句改为短标签。真机验收矩阵见《multiscreen-behavior-spec-真机验证清单.md》。2026-10-12 新增 D11（有效尺寸变化时按弹性布局自适应），修订 4.2、5.2、5.3、S2、S3、7.3、9.1/9.2，明细见附录 F。
 > **读者**：负责实现的开发 agent。本文自包含：现状代码事实、已验证缺陷、目标行为、数据模型、算法、UI、文案、迁移、分阶段任务、测试与验收全部在此。
 > **取代关系**：本文**取代** `docs/requirements/widget-screen-binding.md` 中的 R0-D1（"格子主屏幕"双层开关）、R0 中"拖拽/捕获不改变绑定模式"、R1 语义、R2 解析链、R3.1 菜单、R3.2 中的按钮文案、R4（"Unbound 零迁移 / 保留 ShouldFollowPrimaryMonitor"）。该文档的 **XAML 资源红线（R0）、测试与 AOT 红线（R5）、预览区视觉终案（R8，含 accent 选中态）仍然有效**，实现 UI 时必须遵守。本文 v1（2026-10-04 三路追踪版）的勘误见附录 B。
 > **代码行号**：文中 `文件:行号` 为 2026-10-07 HEAD 的近似位置，开发中会漂移，以函数名为准。
@@ -11,7 +11,7 @@
 
 ### 0.1 一句话目标
 
-格子"放在哪块显示器就属于哪块显示器"；每种"连接了哪些显示器"的组合各记一套摆放；显示器暂时不在时格子临时去别处、回来自动归位；只改分辨率/缩放/主显示器/排列时格子不跳屏。
+格子"放在哪块显示器就属于哪块显示器"；每种"连接了哪些显示器"的组合各记一套摆放；显示器暂时不在时格子临时去别处、回来自动归位；只改分辨率/缩放/主显示器/排列时格子不跳屏；显示器有效尺寸变化时，边距和格子间距不变、格子随之伸缩（D11）。
 
 ### 0.2 阅读顺序
 
@@ -61,6 +61,7 @@
 | D8 | 拓扑响应节奏 | 显示器消失给**宽限期**；锁屏/显示器关闭/全屏独占应用运行期间**只记录不应用**；启动时等显示器到齐；首次出现的组合存活一段时间才落盘。 |
 | D9 | "根据显示器连接记住格子位置"开关 | **不提供**，行为常开。 |
 | D10 | 术语 | 本功能区统一用"显示器"；Windows 主显示器统一叫"主显示器"；删除"格子主屏幕""主屏""固定到此屏"等说法。 |
+| D11 | 有效尺寸变化时格子如何自适应（2026-10-12 批准） | **弹性布局**（5.2）：屏幕边距与格子间距（≤ 64 DIP）保持不变，格子与大片空白按同一比例伸缩；屏幕变小时**先压缩空白**，空白不够再缩格子，缩小首选下限 0.5（空白全部耗尽仍放不下时继续等比缩小，保证不重叠）；天气/音乐等内容固定的格子放大上限 1.5 倍；胶囊尺寸不变，只换算位置。适用于同一显示器改分辨率/缩放、远程会话、首次出现的组合。取代原 S3/5.3 的"按两屏有效尺寸比例缩放"。 |
 
 ---
 
@@ -118,8 +119,8 @@
 | # | 前置 | 操作 | 期望结果 |
 |---|---|---|---|
 | S1 | {L,E}，W1 在 L、W2 在 E | 在 Windows 里把主显示器从 L 改为 E | 两个格子都不动（同一物理屏、同一位置）。"始终在主显示器"的格子移到 E。 |
-| S2 | 同上 | 改 L 的分辨率或缩放，或在 Windows 中拖动显示器排列，再改回 | 格子留在原屏，按锚点保持相对位置；改回后与改之前**完全一致**。期间用户若挪了格子，改回后保留用户挪后的位置（不复活旧布局，修 B2）。 |
-| S3 | {L,E}，W2 在 E（归属 E） | 拔掉 E（断开行为=默认"移到其他显示器"） | 宽限期（约 4 秒）后 W2 出现在 L 上：按 D4 启发式（E 不在 → 去 L），尺寸按两屏有效尺寸比例缩放；归属仍为 E。 |
+| S2 | 同上 | 改 L 的分辨率或缩放，或在 Windows 中拖动显示器排列，再改回 | 格子留在原屏；有效尺寸变化时按弹性布局（D11）自适应：边距与格子间距不变，格子与大片空白伸缩；改回后与改之前**完全一致**。期间用户若挪了格子，改回后保留用户挪后的位置（不复活旧布局，修 B2）。 |
+| S3 | {L,E}，W2 在 E（归属 E） | 拔掉 E（断开行为=默认"移到其他显示器"） | 宽限期（约 4 秒）后 W2 出现在 L 上：按 D4 启发式（E 不在 → 去 L），尺寸按弹性布局（D11）适配 L；归属仍为 E。 |
 | S4 | S3 之后 | 重新接上 E | W2 回到拔前在 E 上的位置与尺寸，与拔前完全一致。 |
 | S5 | S3 之后（W2 临时在 L） | 在 L 上把 W2 拖到另一个位置，然后接回 E | 拖动只写 {L} 组合的档案，归属仍为 E；接回后 W2 回到 E 的原位。再次拔掉 E 时，W2 出现在用户上次在 L 上拖到的位置。 |
 | S6 | {L,E}，W2 在 E | 把 W2 拖到 L 并松手 | 归属立即变为 L；之后拔插、重启、唤起都保持在 L。 |
@@ -183,7 +184,8 @@
 - **只有** 5.4 的"用户放置提交"和 5.9/5.10 的显式动作会把条目设为权威并更新 `AuthoredAtUtc`。
 - `CaptureAllSurfaces` / `CaptureCurrentSurface` / 播种 / 重投影**从不提升**权威标志；重写条目时**沿用旧条目的标志**（新条目默认 `false`）。例外：首次运行的初始捕获（`initialCapture`，无任何旧档案）写 `true`，因为那是用户现有布局。
 - 档案条目只保存**相对显示器的意图**：显示器身份字段 + 锚点 + 边距（DIP）+ 尺寸（DIP）+ 胶囊锚点/边距。物理 X/Y 仅作"上次实际位置"缓存，不作为意图。
-- 尺寸/边距的贴边夹取只在计算实际位置时做（5.2），**不得写回条目**（修 B5）。跨屏首次映射（播种）产生的比例缩放结果写入条目，但标记为非权威。
+- D11 起意图存放在条目的 `Reference`（`WidgetSurfaceLayoutReference`：锚点、边距、尺寸、胶囊锚点/边距，以及摆放时该屏的有效工作区尺寸 `FrameWidth/FrameHeight`）；条目原有的锚点/边距/尺寸/胶囊字段是 `Reference` 在该屏当前几何下的**投影**（5.2）。
+- 尺寸/边距的贴边夹取、弹性伸缩只在计算投影时做（5.2），**不得写回 `Reference`**（修 B5）。播种复制 `Reference`，不做比例缩放（5.3）。
 
 ### 4.3 档案（`WidgetTopologyLayoutProfile`）
 
@@ -244,9 +246,21 @@
 
 删除旧的运行时"WasPrimary 智能跟随排在稳定 ID 之前"逻辑（`SelectPrimaryWorkAreaForSmartMode` / `ShouldFollowPrimaryMonitor` / `SavedMonitorLooksLikePrimary`，约 `WidgetPositioningService.cs:453-495`）。WasPrimary 只在第 4a 步作为"屏不在时去哪"的依据。
 
-### 5.2 实际位置计算（realize）
+### 5.2 实际位置计算（realize）与弹性布局（D11）
 
-`RealizeBounds(entry, display)`：锚点 + 边距（DIP）+ 尺寸（DIP）× 该屏 DPI → 物理矩形；尺寸夹到该屏工作区以内；`EnsureVisible`。**纯函数，不修改条目和配置中的意图字段**（`Width/Height/PositionAnchor/PositionMarginX/Y`）。物理 `X/Y` 可作为"上次实际位置"缓存写回配置。
+激活时对每块屏计算一份弹性映射（`Services/WidgetElasticLayout.cs`，纯函数），把各条目的 `Reference` 投影到该屏当前的有效工作区（物理工作区 ÷ DPI），写入条目投影字段与运行时配置：
+
+1. 取落在该屏的全部表面（含隐藏、收起；禁用的格子不占位但同样投影），选出现最多的 `Reference` 参考尺寸作为公共参考系；参考尺寸不同的少数条目按锚点 + 边距原样放入公共参考系。
+2. X、Y 轴分别处理：把格子投影到轴上，分成"格子覆盖段"和"空白段"。空白 ≤ 64 DIP 为**间距**（屏幕边距、格子间距），长度不变；> 64 DIP 为**开放区域**。
+3. 屏幕变大：格子与开放区域按同一系数伸展，k = (新长度 − 间距总长) ÷ (覆盖总长 + 开放总长)。
+4. 屏幕变小：先把开放区域压到 64 DIP；仍不够再等比缩格子，首选下限 0.5；还放不下依次把开放区域压到 0、压间距；全部空白耗尽仍溢出时继续等比缩格子（突破 0.5），使投影总长恰好等于目标轴——0.5 是首选值而非硬下限，任何缩放比例下投影都不产生重叠。投影夹持使用**自适应最小尺寸**：`min(首选最小 50, 窄格 authored 尺寸 × 有效缩放)`，即夹持永不把格子抬高到越过邻格（窄格允许小于 50 DIP）；窗口创建/物理缓存/播种的绝对下限 20 DIP，交互调整尺寸的下限仍为 50。
+5. 内容固定的格子（天气、音乐、系统监控、速览；格子组内未禁用成员都是这几类时同样处理）放大上限 1.5 倍，多出的空间留在非锚定一侧。
+6. 胶囊尺寸不缩放（高度与最小宽度由内容决定），只有胶囊锚点经同一映射换算。
+7. 映射单调：顺序不变、不新增重叠、对齐的边仍对齐；有效尺寸不变（差值 ≤ 0.5 DIP）时为恒等，逐字使用 `Reference`。DPI 已包含在有效尺寸里，不另乘系数。投影尺寸夹到该屏有效工作区以内。
+
+捕获规则：捕获到的投影与条目上次的投影一致（锚点、边距、尺寸、所在屏、胶囊锚点/边距在 1 DIP 内——该容差吞掉 HWND 整像素量化噪声（125% 下一像素 0.8 DIP），亚 DIP 级移动视为未移动）→ 沿用 `Reference`；不一致（用户放置或其它改动，≥ 1 DIP）→ 用该屏当前的弹性映射反算回参考系写入 `Reference`。因此分辨率/DPI 往返（含重启后建窗量化的往返）无损，在拉伸状态下的拖动/调整大小也会存回参考系。已知取舍：① 投影尺寸被夹到格子最小尺寸之上时，在该状态下手动挪动会把钳制后的尺寸反算回 `Reference`（一次性、不累积）；② 破下限态（间距已压零）下 ≥ 1 DIP 的用户编辑按压缩几何反算——1 DIP 的移动意图会按 1/缩放比放大写回参考系、被压零的边距按反算结果重写（所见即所得语义，恢复大屏后表现为间距变化，可手动整理恢复）。
+
+物理 `X/Y` 仍是"上次实际位置"缓存；realize 不修改 `Reference`。
 
 阶段 3 需同时检查 `RestoreBoundsForCurrentTopology`（`updateConfig` 默认 true，约 `WidgetWindowBase.Bounds.cs:591-600`）一类路径：它们只允许更新物理 `X/Y` 缓存，不允许改写 `Width/Height`/锚点/边距。
 
@@ -273,7 +287,7 @@ Seed(s):
     else（无归属）:
         if A 中存在其屏当前在线的条目: src = 其中最新者；目标 = 该屏
         else: src = A[0]（无则当前配置）；目标 = DisplayPlacementResolver 第 4~5 步
-    目标 == src 所在屏 → 直接复制（ratio = 1）；否则按比例映射
+    复制 src 的 Reference（不缩放，D11），显示器身份改写为目标屏；尺寸适配由激活时的弹性布局完成（5.2）
     结果条目 IsAuthoritative = (目标 == src 所在屏 且 src 为权威)，否则 false
 ```
 
@@ -281,7 +295,7 @@ Seed(s):
 
 **"条目屏"的判定**（上面伪码两处使用）：条目的 `PositionMonitorStableId` 经 Trim + 忽略大小写规范化后与目标屏稳定 ID 比较；条目稳定 ID 为空或退化（`\\.\DISPLAYn` / `unknown-display`）时视为"无法判定"，按 ≠ 处理（走 Seed 重建）。为避免全退化环境下"每次激活都重建、权威条目被 Seed 重写"，5.4 提交时必须把条目的 `PositionMonitorStableId` 强制写为落点屏的稳定 ID（落点屏退化时写 `HomeId`），保证有归属的表面条目屏始终可判定。
 
-- "按比例映射"沿用现有 `MapToTopology` 的有效尺寸比例与锚点重算；同一物理屏 ratio = 1。
+- `MapToTopology` 只改写显示器身份并携带 `Reference`（D11 起不再按两屏有效尺寸比例缩放尺寸与边距）；跨屏、跨分辨率的尺寸适配统一由 5.2 的弹性布局完成。
 - 映射时必须同步胶囊显示器字段（4.4）。
 - 阶段 1 先把 `Activate` 中"新档案整体从上一个激活档案播种"（`SeedProfile`、`EnsureMissingSurfaces`）替换为上面的逐表面 `Seed`；key 仍为 v3。阶段 3 把 key 改为 v4（5.6）。
 - 激活**永不改**归属/模式（保持 `TopologyProfileActivation_RepositionsButNeverRebinds` 通过）。D3 的系统收起只改收起状态，不改归属。
@@ -555,6 +569,14 @@ CommitUserPlacement(surface, finalPhysicalBounds, source)
 5. **并列与缺失**：`LastUsedAtUtc` 相同或字段缺失时（老档案反序列化会初始化为"载入时刻"，排序实质随机）→ 以 v3 key 字典序作次级 tiebreak。
 6. **空/全退化 `Monitors` 的 v3 档案**：其 v4 key 为空集合哈希，会互相撞 key——此类档案**不参与合并、直接丢弃**；`ActiveWidgetTopologyKey` 若指向被丢弃的档案 → 置 null（下次激活按新组合播种）。7.1 归属推断中"显示器数量最多"照计退化 ID 的 `Monitors`（屏数与身份是否退化无关）。
 
+### 7.3 档案版本 1 → 2（D11，随弹性布局发布）
+
+在 `SettingsService.NormalizeWidgetTopologyLayouts` 与 `WidgetTopologyLayoutService.Activate` 中按档案惰性执行（`WidgetTopologyLayoutService.UpgradeProfile`，纯计算）：
+
+1. 非激活档案中 `IsAuthoritative != true` 的条目删除——它们是旧逻辑按比例缩放后写入的播种结果（例如远程会话档案里被缩小的格子），下次激活时按新规则重新播种。
+2. 其余条目按其档案保存的 `Monitors`（最近一次看到的几何）派生 `Reference`。
+3. `Version = 2`。
+
 **降级兼容**：旧版本读取新文件时，`Pinned`/`FollowPrimary`/`BoundScreenId` 语义兼容；未知新字段被忽略；v4 key 档案会被旧版本的 `FindCompatibleProfile` 按签名懒迁移回 v3，可接受。
 
 ---
@@ -645,6 +667,11 @@ CommitUserPlacement(surface, finalPhysicalBounds, source)
 | R18 | 把所有格子移到这里 + 撤销：撤销后 Mode/BoundScreenId/几何/条目与之前逐字段相等 | 通过 |
 | R19 | 断开收起：候选判定、标志写入、归属屏回来自动展开、用户手动操作后清除标志、"始终展开"行为的表面不收起 | 通过 |
 | R20 | 菜单构建：单屏返回 null；打勾项=实际所在屏；回退态出现禁用"原显示器"项；无"自动"项 | 通过 |
+| R21 | 弹性映射纯函数（`WidgetElasticLayoutTests`）：恒等、铺满网格放大、稀疏布局放大、缩小先压空白、无空白时缩格子、下限 0.5、固定内容上限、反算互逆、单调不重叠 | 通过 |
+| R22 | 同屏 1080p → 4K（同 DPI）→ 1080p：间距不变、格子拉伸，切回后逐字段一致 | 通过 |
+| R23 | 4K@150% → 远程 1080p（新组合）：稀疏布局格子尺寸不变，只压缩空白；回本机完全复原 | 通过 |
+| R24 | 拉伸状态下调整大小后切回参考分辨率：尺寸按反算结果恢复；胶囊锚点经映射换算；天气格子放大不超过 1.5 倍；档案版本升级删除非激活档案的非权威条目并派生 `Reference` | 通过 |
+| R25 | 复审补测：极限缩小（3840 铺满 3 列 → 1366）投影总长不超目标轴、格子互不重叠；参考区间合并；纯 DPI 翻转往返；异分辨率双屏各自成 plan | 通过 |
 
 **可测性前提**（实现时先做提取，否则下列用例无法在测试宿主纯逻辑运行）：R11 需注入 `GetCursorPos`；R13/R14 需把门/宽限抽成纯状态机并注入时钟（协调器本体用 `DispatcherQueueTimer`，现有 `DisplayTopologyTransitionCoordinatorTests` 只覆盖 StabilityTracker/CombineReasons 等静态件）；R16 需注入时钟（`CreateSnapshotForTest` + internal `Activate` 已经可用）；R18/R19/R20 落在 `WidgetManager`/窗口/UI 层，需分别抽出"快照-应用"纯服务、"断开收起候选判定"纯函数与"菜单状态"纯模型（`WidgetScreenMenuBuilder` 构造 WinUI 对象，测试宿主无 XAML 运行时；AOT 契约测试只是源码扫描，不覆盖此层）。
 
@@ -657,6 +684,8 @@ CommitUserPlacement(surface, finalPhysicalBounds, source)
 | `WidgetPositioningServiceTests.EnsureCurrentBoundsCoordinateVersion_MigratesLegacyPrimaryWidgetToCurrentPrimary` | 老坐标迁移时移到当前主显示器 | 按新解析器：原屏在线 → 留在原屏（断言相应更新） |
 | `WidgetScreenBindingTests.UnboundChain_StableIdLayer_OutranksSwappedDeviceName` 等 | — | 逐个复核，仍符合 5.1 的保留，不符合的按 5.1 改写并在 PR 描述中列出 |
 | `PinAll` 相关测试（如有） | 永久固定 | 改为 5.9 语义 |
+| `WidgetTopologyLayoutServiceTests.ReplacementMonitor_SeedsProportionallyInsideItsEffectiveWorkArea` | 播种按两屏有效尺寸比例缩放 | 改名 `ReplacementMonitor_SeedCarriesTheUnscaledAuthoredReference`：播种不缩放并携带 `Reference`（D11） |
+| `WidgetTopologyLayoutServiceTests.DegenerateResolutionChange_*` / `DualDegenerateResolutionChange_*` | 分辨率变化后边距/尺寸字面不变 | 间距不变，格子与开放区域按弹性布局伸展（D11） |
 
 ### 9.3 真机验收清单（每阶段结束执行对应条目，记录结果到本文附录 D）
 
@@ -763,3 +792,15 @@ CommitUserPlacement(surface, finalPhysicalBounds, source)
 | 测试可测性 | 9.1 表后新增提取前提（R11 注入 GetCursorPos；R13/R14/R16 纯状态机+注入时钟；R18/R19/R20 需抽纯逻辑层——现状落点在 WidgetManager/窗口/UI 层，测试宿主无法直跑） |
 | 措辞修正 | B3 改"逐表面播种+签名相同历史档案优先（sourceProfile=上一个 ActiveKey）"；B9 落点改"包含 (100,100) 的显示器"；任务 2.1 P/Invoke 风格描述（DllImport/LibraryImport 并存） |
 | 确认无误项（未改） | B1/B2/B4-B8/B10-B12 逐条属实；9.2 三个测试名、`CalculateRightAlignedBounds`/`CollapseWidgetFromHost`/`persistManualState` 参数/`WidgetCollapseBehavior.Expanded`/`ShowLoadedWidgetWindow(:1395)`/`WidgetManager.CoordinatedMove.cs`/`Settings.Displays.SetDefault.Clear.Title` 键、Schema=11、5.8 创建路径清单（全仓 13 处 `.Widgets.Add` 全对上）、5.6 真子集判定数据可靠（宽限期激活档案 Monitors 不被覆盖）、外部依据 8 条中 7 条属实（复制模式单枚举为架构共识，建议 S15 真机验证） |
+
+## 附录 F：2026-10-12 弹性布局修订记录（D11）
+
+| 类别 | 修订 |
+|---|---|
+| 动机 | 用户反馈：1080p ↔ 4K（同 DPI）切换后格子之间空白暴涨（DIP 尺寸与角锚边距字面保持，空白全部堆在锚向不同的格子之间）；远程会话到 1080p 后格子变得很小（旧播种按两屏有效尺寸比例把缩小后的尺寸写进远程档案）。 |
+| 决策 | D11：弹性布局；屏幕变小先压缩开放区域；间距阈值 64 DIP、缩小下限 0.5、内容固定格子放大上限 1.5 倍。 |
+| 数据模型 | 档案条目新增 `Reference`（4.2）；档案 `Version` 1 → 2（7.3）。运行时配置字段不变，仍是当前几何下的投影。 |
+| 算法 | 5.2 改为按屏弹性映射 + 捕获时"投影未变沿用、投影变化反算"；5.3 播种不再缩放；`MapToTopology` 只改写身份并携带 `Reference`。 |
+| 场景 | S2、S3 的尺寸描述改为按 D11 适配。 |
+| 测试 | 新增 R21–R24；9.2 补充改写的现有测试。 |
+|| 复审修订 | 同日三方审查后：0.5 由硬下限改为首选下限——空白全部耗尽仍溢出时继续等比缩格子，保证投影不重叠（修极限缩小下逐格钳位产生的重叠，R25）；组的固定内容判定只看未禁用成员；`Grow` 增加非负防御；`multiscreen-behavior-spec-真机验证清单.md` B6 文案同步。 |

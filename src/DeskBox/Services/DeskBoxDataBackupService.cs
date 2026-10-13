@@ -537,7 +537,8 @@ public sealed partial class DeskBoxDataBackupService
                 archiveInfo.Manifest.CreatedAtUtc,
                 archiveInfo.Manifest.AppVersion,
                 Domains: null,
-                AllowMissingSettings: allowMissingSettings);
+                AllowMissingSettings: allowMissingSettings,
+                SourceDataPath: archiveInfo.Manifest.SourceDataPath);
             await WritePendingRestoreMarkerAtomicallyAsync(
                 PendingRestoreMarkerPath,
                 marker,
@@ -1304,7 +1305,12 @@ public sealed partial class DeskBoxDataBackupService
             TryDeleteDirectory(stagingRoot);
             TryDeleteDirectory(rollbackRoot);
             App.Log($"[DataBackup] Applied pending restore from '{marker.ArchivePath}'.");
-            return new DeskBoxRestoreApplyResult(true, true, null);
+            return new DeskBoxRestoreApplyResult(
+                true,
+                true,
+                null,
+                DeskBoxRestoreApplyKind.Full,
+                marker.SourceDataPath);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1314,7 +1320,7 @@ public sealed partial class DeskBoxDataBackupService
         {
             App.Log($"[DataBackup] Pending restore failed: {ex}");
             DeletePendingRestoreCore();
-            return new DeskBoxRestoreApplyResult(true, false, ex.Message);
+            return new DeskBoxRestoreApplyResult(true, false, ex.Message, DeskBoxRestoreApplyKind.Full);
         }
         finally
         {
@@ -1447,7 +1453,7 @@ public sealed partial class DeskBoxDataBackupService
             TryDeleteFile(PendingRestoreMarkerPath);
             TryDeleteDirectory(stagingRoot);
             App.Log($"[DataBackup] Applied scoped restore from '{marker.ArchivePath}' (domains: {scope}).");
-            return new DeskBoxRestoreApplyResult(true, true, null);
+            return new DeskBoxRestoreApplyResult(true, true, null, DeskBoxRestoreApplyKind.Scoped);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1469,7 +1475,8 @@ public sealed partial class DeskBoxDataBackupService
                 return new DeskBoxRestoreApplyResult(
                     true,
                     false,
-                    $"Restore failed on {attempts} launches and was abandoned: {ex.Message}");
+                    $"Restore failed on {attempts} launches and was abandoned: {ex.Message}",
+                    DeskBoxRestoreApplyKind.Scoped);
             }
 
             App.Log(
@@ -1489,7 +1496,7 @@ public sealed partial class DeskBoxDataBackupService
                 App.Log($"[DataBackup] Failed to persist restore attempt count: {writeEx.Message}");
             }
 
-            return new DeskBoxRestoreApplyResult(true, false, ex.Message);
+            return new DeskBoxRestoreApplyResult(true, false, ex.Message, DeskBoxRestoreApplyKind.Scoped);
         }
     }
 
@@ -3332,7 +3339,17 @@ public sealed partial class DeskBoxDataBackupService
         // without this field deserialize as false and are discarded — the
         // safe direction, since the user simply re-runs the restore.
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-        bool FullRestoreConfirmed = false);
+        bool FullRestoreConfirmed = false,
+        // Full restores only: the source machine's data directory recorded
+        // by the backup manifest. The apply swap moves only files, so after
+        // it lands this is the sole trace of where the archived settings'
+        // machine-local paths (managed storage root, custom snapshot
+        // folder) originally lived — the post-restore recovery step derives
+        // the source user profile from it. Null on scoped markers and on
+        // markers written before this field existed; those launches simply
+        // skip the rebase.
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? SourceDataPath = null);
 
     [JsonSourceGenerationOptions(
         GenerationMode = JsonSourceGenerationMode.Metadata,
@@ -3448,10 +3465,19 @@ internal sealed record TodoRestorePlan(
 /// </summary>
 public sealed record DeskBoxDomainItemCount(string Domain, int Items);
 
+internal enum DeskBoxRestoreApplyKind
+{
+    None = 0,
+    Full,
+    Scoped,
+}
+
 internal sealed record DeskBoxRestoreApplyResult(
     bool HadPendingRestore,
     bool Succeeded,
-    string? ErrorMessage)
+    string? ErrorMessage,
+    DeskBoxRestoreApplyKind Kind = DeskBoxRestoreApplyKind.None,
+    string? SourceDataPath = null)
 {
     public static DeskBoxRestoreApplyResult NoPendingRestore { get; } = new(false, true, null);
 }

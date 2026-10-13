@@ -151,15 +151,20 @@ public sealed partial class SettingsWindow
     {
         // Windows 10 cannot offer a modifier switch to external targets: a
         // brokered drag there advertises a single effect only. The modifier
-        // tip therefore never fires and its toggle is disabled; the note
-        // under the drag-out combo explains the collapsed semantics.
+        // tip therefore never fires and its toggle is disabled; the note is
+        // appended to the card description (the content column is an Auto
+        // grid column — a wide note there overflows the card on high-scale
+        // narrow windows instead of wrapping).
         bool modifiersReachExternalTargets =
             WindowsCompatibilityService.IsWindows11OrLater;
-        if (DragOutWin10Note is { } note)
+        if (DragOutActionCard is { } card)
         {
-            note.Visibility = modifiersReachExternalTargets
-                ? Visibility.Collapsed
-                : Visibility.Visible;
+            string description = _localizationService.T("Settings.DragOutAction.Description");
+            if (!modifiersReachExternalTargets)
+            {
+                description += "\n" + _localizationService.T("Settings.DragOutAction.Win10Note");
+            }
+            card.Description = description;
         }
         if (DragOutModifierTipToggle is { } toggle)
         {

@@ -37,6 +37,39 @@ public sealed class TodoQingdanBridgeTests : IDisposable
     }
 
     [Fact]
+    public async Task ReadTasksReflectsTasksAddedAndUpdatedBetweenBridgeSessions()
+    {
+        Directory.CreateDirectory(_root);
+        string databasePath = Path.Combine(_root, "todos.db");
+        CreateFixture(databasePath, knownShape: true);
+
+        await using (BridgeSession first = await StartAsync("3.14.2.0"))
+        {
+            BridgeResponse initial = await first.SendAsync(BridgeProtocol.ReadTasks);
+            Assert.Equal("PRIVATE_SENTINEL_TITLE", Assert.Single(initial.Snapshot!.Tasks).Title);
+        }
+
+        using (var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False"))
+        {
+            connection.Open();
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE todos SET task_content='UPDATED_TITLE', update_time=1760230900
+                WHERE task_id='fixture-task';
+                INSERT INTO todos(task_id,task_content,task_describe,complete,create_time,deleted,sync_time,task_sort,todo_time,update_time,version)
+                VALUES('added-task','ADDED_TITLE',NULL,0,1760230900,0,1760230900,2,0,1760230900,1);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        await using BridgeSession second = await StartAsync("3.14.2.0");
+        BridgeResponse refreshed = await second.SendAsync(BridgeProtocol.ReadTasks);
+        Assert.Equal(2, refreshed.Snapshot!.Tasks.Count);
+        Assert.Contains(refreshed.Snapshot.Tasks, task => task.Id == "fixture-task" && task.Title == "UPDATED_TITLE");
+        Assert.Contains(refreshed.Snapshot.Tasks, task => task.Id == "added-task" && task.Title == "ADDED_TITLE");
+    }
+
+    [Fact]
     public async Task UnknownSchemaAndProtocolMismatchRemainUnavailableAndReadOnly()
     {
         Directory.CreateDirectory(_root);
@@ -111,8 +144,8 @@ public sealed class TodoQingdanBridgeTests : IDisposable
     }
 
     [Theory]
-    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\x64\Release\net10.0-windows10.0.22621.0\win-x64", @"src\DeskBox.TodoQingdanBridge\bin\x64\Release\net10.0\win-x64\DeskBox.TodoQingdanBridge.exe")]
-    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\ARM64\Debug\net10.0-windows10.0.22621.0\win-arm64", @"src\DeskBox.TodoQingdanBridge\bin\ARM64\Debug\net10.0\win-arm64\DeskBox.TodoQingdanBridge.exe")]
+    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\x64\Release\net10.0-windows10.0.22621.0\win-x64", @"src\DeskBox.TodoQingdanBridge\bin\x64\Release\net10.0\DeskBox.TodoQingdanBridge.exe")]
+    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\ARM64\Debug\net10.0-windows10.0.22621.0\win-arm64", @"src\DeskBox.TodoQingdanBridge\bin\ARM64\Debug\net10.0\DeskBox.TodoQingdanBridge.exe")]
     public void ResolveBridgeRelativePathMatchesCurrentTestBuild(
         string testBaseDirectory,
         string expected)
@@ -144,10 +177,6 @@ public sealed class TodoQingdanBridgeTests : IDisposable
 
         string platform = segments[binIndex + 1];
         string configuration = segments[binIndex + 2];
-        string? runtimeIdentifier = segments
-            .Skip(binIndex + 4)
-            .FirstOrDefault(segment => segment.StartsWith("win-", StringComparison.OrdinalIgnoreCase));
-
         return Path.Combine(
             "src",
             "DeskBox.TodoQingdanBridge",
@@ -155,7 +184,6 @@ public sealed class TodoQingdanBridgeTests : IDisposable
             platform,
             configuration,
             "net10.0",
-            runtimeIdentifier ?? string.Empty,
             "DeskBox.TodoQingdanBridge.exe");
     }
 

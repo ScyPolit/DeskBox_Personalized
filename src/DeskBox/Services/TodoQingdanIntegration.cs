@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using DeskBox.Models;
 using DeskBox.Contracts;
 using DeskBox.TodoQingdan.Protocol;
@@ -20,6 +21,7 @@ public sealed class TodoQingdanIntegrationSettings
 {
     public int Version { get; set; } = 1;
     public TodoDataSource DataSource { get; set; }
+    public bool TodoDebugMode { get; set; }
 }
 
 [JsonSourceGenerationOptions(
@@ -39,10 +41,14 @@ public sealed class TodoQingdanIntegrationStore
 
     public TodoQingdanIntegrationStore(string? dataDirectory = null)
     {
+        IsDefaultLocation = dataDirectory is null;
         _path = Path.Combine(
             dataDirectory ?? DeskBoxDataPathService.Current.DataDirectory,
             "todo-qingdan-integration.json");
     }
+
+    public bool Exists => File.Exists(_path);
+    public bool IsDefaultLocation { get; }
 
     public Task<TodoQingdanIntegrationSettings> LoadAsync() => ResilientJsonStore.LoadAsync(
         _path,
@@ -62,14 +68,25 @@ public sealed record TodoQingdanConnectionStatus(
     string? AdapterId,
     string? SchemaFingerprint,
     IReadOnlyList<string> Capabilities,
-    string? ErrorCode);
+    string? ErrorCode,
+    string DataSourcePath,
+    bool DatabaseExists,
+    DateTimeOffset? LastSyncTime,
+    int TaskCount,
+    bool UsedOfflineCache,
+    string? ErrorMessage);
 
-public sealed class TodoRepositoryRouter : ITodoRepositoryFactory, ITodoIntegrationSettings
+public sealed class TodoRepositoryRouter : ITodoRepositoryFactory, ITodoIntegrationSettings, IDisposable
 {
+    private static readonly TimeSpan ExternalRefreshInterval = TimeSpan.FromSeconds(10);
     private readonly ITodoRepositoryFactory _local;
     private readonly TodoQingdanRepositoryFactory _external;
     private readonly TodoQingdanIntegrationStore _store;
     private TodoQingdanIntegrationSettings _settings = new();
+    private readonly CancellationTokenSource _monitorLifetime = new();
+    private Task? _monitorTask;
+    private string? _observedExternalRevision;
+    private SynchronizationContext? _synchronizationContext;
 
     public TodoRepositoryRouter(
         ITodoRepositoryFactory? local = null,
@@ -86,13 +103,60 @@ public sealed class TodoRepositoryRouter : ITodoRepositoryFactory, ITodoIntegrat
     string ITodoIntegrationSettings.DataSource => _settings.DataSource.ToString();
     public string ConnectionState => Status.State;
     public string DetectedVersion => Status.ProductVersion ?? "-";
+    public bool TodoDebugMode => _settings.TodoDebugMode;
+    public string DataSourcePath => Status.DataSourcePath;
+    public bool DatabaseExists => Status.DatabaseExists;
+    public DateTimeOffset? LastSyncTime => Status.LastSyncTime;
+    public int TaskCount => Status.TaskCount;
+    public string ErrorLog => Status.ErrorMessage ?? Status.ErrorCode ?? string.Empty;
     public TodoQingdanConnectionStatus Status => _external.Status;
     public event Action? Changed;
 
     public async Task InitializeAsync()
     {
+        _synchronizationContext = SynchronizationContext.Current;
+        bool hadPersistedSettings = _store.Exists;
+        bool externalSnapshotLoaded = false;
         _settings = await _store.LoadAsync();
-        Changed?.Invoke();
+        _external.LogStartupDiagnostics();
+
+        // Personalized builds historically exposed TodoQingdan in Settings but
+        // defaulted silently to DeskBoxLocal. Adopt a verified local database
+        // only on the first run; an explicit existing preference always wins.
+        if (!hadPersistedSettings && _store.IsDefaultLocation)
+        {
+            try
+            {
+                BridgeResponse response = await _external.ReadTasksAsync(_monitorLifetime.Token);
+                if (response.Succeeded && response.Snapshot is not null)
+                {
+                    externalSnapshotLoaded = true;
+                    _settings.DataSource = TodoDataSource.TodoQingdan;
+                    await _store.SaveAsync(_settings);
+                    LogDebug($"First-run compatible source adopted; tasks={response.Snapshot.Tasks.Count}.");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _external.RecordFailure(ex);
+            }
+        }
+
+        if (UsesExternalSource && !externalSnapshotLoaded)
+        {
+            try
+            {
+                await _external.ReadTasksAsync(_monitorLifetime.Token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _external.RecordFailure(ex);
+            }
+        }
+
+        _observedExternalRevision = _external.GetStorageRevision();
+        _monitorTask = MonitorExternalChangesAsync(_monitorLifetime.Token);
+        RaiseChanged();
     }
 
     public async Task SetDataSourceAsync(TodoDataSource source)
@@ -100,7 +164,19 @@ public sealed class TodoRepositoryRouter : ITodoRepositoryFactory, ITodoIntegrat
         if (_settings.DataSource == source) return;
         _settings.DataSource = source;
         await _store.SaveAsync(_settings);
-        Changed?.Invoke();
+        if (source == TodoDataSource.TodoQingdan)
+        {
+            try
+            {
+                await _external.ReadTasksAsync(_monitorLifetime.Token);
+                _observedExternalRevision = _external.GetStorageRevision();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _external.RecordFailure(ex);
+            }
+        }
+        RaiseChanged();
     }
 
     public Task SetDataSourceAsync(string source) => SetDataSourceAsync(
@@ -108,10 +184,26 @@ public sealed class TodoRepositoryRouter : ITodoRepositoryFactory, ITodoIntegrat
             ? parsed
             : TodoDataSource.DeskBoxLocal);
 
+    public async Task SetTodoDebugModeAsync(bool enabled)
+    {
+        if (_settings.TodoDebugMode == enabled) return;
+        _settings.TodoDebugMode = enabled;
+        await _store.SaveAsync(_settings);
+        RaiseChanged();
+    }
+
     public async Task RefreshCompatibilityAsync(CancellationToken cancellationToken = default)
     {
-        await _external.RefreshCompatibilityAsync(cancellationToken);
-        Changed?.Invoke();
+        try
+        {
+            await _external.ReadTasksAsync(cancellationToken);
+            _observedExternalRevision = _external.GetStorageRevision();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _external.RecordFailure(ex);
+        }
+        RaiseChanged();
     }
 
     public ITodoRepository ForWidget(string widgetId) => new RoutedTodoRepository(this, widgetId);
@@ -119,6 +211,46 @@ public sealed class TodoRepositoryRouter : ITodoRepositoryFactory, ITodoIntegrat
     public Task DeleteForWidgetAsync(string widgetId) => UsesExternalSource
         ? Task.CompletedTask
         : _local.DeleteForWidgetAsync(widgetId);
+
+    public void Dispose()
+    {
+        _monitorLifetime.Cancel();
+        _monitorLifetime.Dispose();
+    }
+
+    private async Task MonitorExternalChangesAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(ExternalRefreshInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                if (!UsesExternalSource) continue;
+                string revision = _external.GetStorageRevision();
+                if (string.Equals(revision, _observedExternalRevision, StringComparison.Ordinal)) continue;
+                _observedExternalRevision = revision;
+                LogDebug($"External storage changed; revision={revision}.");
+                RaiseChanged();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private static void LogDebug(string message) => App.Log($"[TODOLIST DEBUG] {message}");
+
+    private void RaiseChanged()
+    {
+        SynchronizationContext? context = _synchronizationContext;
+        if (context is not null && !ReferenceEquals(context, SynchronizationContext.Current))
+        {
+            context.Post(_ => Changed?.Invoke(), null);
+            return;
+        }
+
+        Changed?.Invoke();
+    }
 
     private sealed class RoutedTodoRepository(TodoRepositoryRouter router, string widgetId) : ITodoRepository
     {
@@ -138,11 +270,35 @@ public sealed class TodoRepositoryRouter : ITodoRepositoryFactory, ITodoIntegrat
 public sealed class TodoQingdanRepositoryFactory : ITodoRepositoryFactory
 {
     private readonly object _gate = new();
-    private TodoQingdanConnectionStatus _status = new("not-checked", null, null, null, [], null);
+    private readonly Func<(string? Executable, string DataRoot, string ProductVersion)> _discover;
+    private readonly string _cacheDirectory;
+    private readonly string _bridgeExecutable;
+    private TodoQingdanConnectionStatus _status = CreateInitialStatus();
     public bool UsesExternalSource => true;
     public TodoQingdanConnectionStatus Status { get { lock (_gate) return _status; } }
 
-    public ITodoRepository ForWidget(string widgetId) => new TodoQingdanRepository(this, widgetId);
+    public TodoQingdanRepositoryFactory()
+        : this(Discover, null)
+    {
+    }
+
+    internal TodoQingdanRepositoryFactory(
+        Func<(string? Executable, string DataRoot, string ProductVersion)> discover,
+        string? cacheDirectory = null,
+        string? bridgeExecutable = null)
+    {
+        _discover = discover ?? throw new ArgumentNullException(nameof(discover));
+        _cacheDirectory = cacheDirectory ?? Path.Combine(
+            DeskBoxDataPathService.Current.DataDirectory,
+            "todo-qingdan-cache");
+        _bridgeExecutable = bridgeExecutable ?? Path.Combine(
+            AppContext.BaseDirectory,
+            "TodoQingdanBridge",
+            "DeskBox.TodoQingdanBridge.exe");
+    }
+
+    public ITodoRepository ForWidget(string widgetId) =>
+        new TodoQingdanRepository(this, widgetId, _cacheDirectory);
     public Task DeleteForWidgetAsync(string widgetId) => Task.CompletedTask;
 
     public async Task<TodoQingdanConnectionStatus> RefreshCompatibilityAsync(CancellationToken cancellationToken = default)
@@ -159,6 +315,48 @@ public sealed class TodoQingdanRepositoryFactory : ITodoRepositoryFactory
         return response;
     }
 
+    internal string GetStorageRevision()
+    {
+        string databasePath = GetDatabasePath();
+        string walPath = databasePath + "-wal";
+        return string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"{GetFileRevision(databasePath)}:{GetFileRevision(walPath)}");
+    }
+
+    internal void LogStartupDiagnostics()
+    {
+        string path = GetDatabasePath();
+        LogDebug($"检测路径: {path}");
+        LogDebug($"数据库是否存在: {File.Exists(path).ToString().ToLowerInvariant()}");
+    }
+
+    internal void RecordOfflineCache(int taskCount, Exception exception)
+    {
+        TodoQingdanConnectionStatus current = Status;
+        UpdateStatus(current with
+        {
+            State = "offline-cache",
+            TaskCount = taskCount,
+            UsedOfflineCache = true,
+            ErrorCode = GetErrorCode(exception),
+            ErrorMessage = exception.Message
+        });
+        LogDebug($"读取失败，使用离线缓存; tasks={taskCount}; error={GetErrorCode(exception)}.");
+    }
+
+    internal void RecordFailure(Exception exception)
+    {
+        TodoQingdanConnectionStatus current = Status;
+        UpdateStatus(current with
+        {
+            State = "unavailable",
+            ErrorCode = GetErrorCode(exception),
+            ErrorMessage = exception.Message
+        });
+        LogDebug($"连接失败: {GetErrorCode(exception)}; {exception.Message}");
+    }
+
     private void UpdateStatus(BridgeResponse response)
     {
         BridgeHandshake? handshake = response.Handshake;
@@ -170,26 +368,42 @@ public sealed class TodoQingdanRepositoryFactory : ITodoRepositoryFactory
                 handshake?.AdapterId,
                 handshake?.SchemaFingerprint,
                 handshake?.Capabilities ?? [],
-                response.ErrorCode);
+                response.ErrorCode,
+                GetDatabasePath(),
+                File.Exists(GetDatabasePath()),
+                response.Snapshot is null ? _status.LastSyncTime : DateTimeOffset.Now,
+                response.Snapshot?.Tasks.Count ?? _status.TaskCount,
+                false,
+                response.ErrorMessage);
         }
+        if (response.Snapshot is not null)
+            LogDebug($"读取任务数量: {response.Snapshot.Tasks.Count}");
     }
 
-    private static async Task<BridgeResponse> SendAsync(string operation, CancellationToken cancellationToken)
+    private void UpdateStatus(TodoQingdanConnectionStatus status)
     {
-        (string executable, string dataRoot, string productVersion) = Discover();
+        lock (_gate) _status = status;
+    }
+
+    private async Task<BridgeResponse> SendAsync(string operation, CancellationToken cancellationToken)
+    {
+        (string? executable, string dataRoot, string productVersion) = _discover();
         string pipeName = $"DeskBox.TodoQingdan.{Environment.ProcessId}.{Guid.NewGuid():N}";
-        string bridge = Path.Combine(
-            AppContext.BaseDirectory,
-            "TodoQingdanBridge",
-            "DeskBox.TodoQingdanBridge.exe");
+        string bridge = _bridgeExecutable;
         if (!File.Exists(bridge)) throw new InvalidOperationException("bridge-not-found");
-        using Process process = Process.Start(new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
             FileName = bridge,
             UseShellExecute = false,
-            CreateNoWindow = true,
-            Arguments = $"--pipe \"{pipeName}\" --data-root \"{dataRoot}\" --product-version \"{productVersion}\""
-        }) ?? throw new InvalidOperationException("bridge-start-failed");
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("--pipe");
+        startInfo.ArgumentList.Add(pipeName);
+        startInfo.ArgumentList.Add("--data-root");
+        startInfo.ArgumentList.Add(dataRoot);
+        startInfo.ArgumentList.Add("--product-version");
+        startInfo.ArgumentList.Add(productVersion);
+        using Process process = Process.Start(startInfo) ?? throw new InvalidOperationException("bridge-start-failed");
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -218,7 +432,7 @@ public sealed class TodoQingdanRepositoryFactory : ITodoRepositoryFactory
         }
     }
 
-    private static (string Executable, string DataRoot, string ProductVersion) Discover()
+    private static (string? Executable, string DataRoot, string ProductVersion) Discover()
     {
         string dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "todo-list");
         string? executable = Process.GetProcesses()
@@ -236,10 +450,76 @@ public sealed class TodoQingdanRepositoryFactory : ITodoRepositoryFactory
                     .FirstOrDefault(path => !Path.GetFileName(path).StartsWith("Uninstall", StringComparison.OrdinalIgnoreCase))
                 : null;
         }
-        if (executable is null || !Directory.Exists(dataRoot))
+        if (!Directory.Exists(dataRoot) || !File.Exists(Path.Combine(dataRoot, "todos.db")))
             throw new InvalidOperationException("todo-qingdan-not-found");
-        return (executable, dataRoot, FileVersionInfo.GetVersionInfo(executable).ProductVersion ?? string.Empty);
+        string productVersion = executable is null
+            ? DiscoverVersionFromLog(dataRoot)
+            : FileVersionInfo.GetVersionInfo(executable).ProductVersion ?? string.Empty;
+        return (executable, dataRoot, productVersion);
     }
+
+    private static string DiscoverVersionFromLog(string dataRoot)
+    {
+        string logPath = Path.Combine(dataRoot, "logs", "main.log");
+        if (!File.Exists(logPath)) return string.Empty;
+        try
+        {
+            string tail = ReadFileTail(logPath, 256 * 1024);
+            MatchCollection matches = Regex.Matches(
+                tail,
+                @"(?:version|版本)\s+(?<version>\d+\.\d+\.\d+(?:\.\d+)?)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return matches.Count == 0 ? string.Empty : matches[^1].Groups["version"].Value;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string ReadFileTail(string path, int maximumBytes)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        int length = (int)Math.Min(stream.Length, maximumBytes);
+        stream.Seek(-length, SeekOrigin.End);
+        byte[] buffer = new byte[length];
+        int read = stream.Read(buffer, 0, length);
+        return Encoding.UTF8.GetString(buffer, 0, read);
+    }
+
+    private string GetDatabasePath()
+    {
+        try
+        {
+            return Path.Combine(_discover().DataRoot, "todos.db");
+        }
+        catch
+        {
+            return GetDefaultDatabasePath();
+        }
+    }
+
+    private static string GetDefaultDatabasePath() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "todo-list", "todos.db");
+
+    private static string GetFileRevision(string path)
+    {
+        var file = new FileInfo(path);
+        return file.Exists ? $"{file.Length}-{file.LastWriteTimeUtc.Ticks}" : "missing";
+    }
+
+    private static string GetErrorCode(Exception exception) =>
+        exception is InvalidOperationException { Message: var message } && !string.IsNullOrWhiteSpace(message)
+            ? message
+            : exception.GetType().Name;
+
+    private static TodoQingdanConnectionStatus CreateInitialStatus()
+    {
+        string path = GetDefaultDatabasePath();
+        return new("not-checked", null, null, null, [], null, path, File.Exists(path), null, 0, false, null);
+    }
+
+    private static void LogDebug(string message) => App.Log($"[TODOLIST DEBUG] {message}");
 
     private static string? DiscoverFromRegistry()
     {
@@ -263,13 +543,20 @@ public sealed class TodoQingdanRepositoryFactory : ITodoRepositoryFactory
     }
 }
 
-internal sealed class TodoQingdanRepository(TodoQingdanRepositoryFactory factory, string widgetId) : ITodoRepository
+internal sealed class TodoQingdanRepository : ITodoRepository
 {
-    private readonly string _snapshotPath = Path.Combine(
-        DeskBoxDataPathService.Current.DataDirectory,
-        "todo-qingdan-cache",
-        Sanitize(widgetId) + ".json");
+    private readonly TodoQingdanRepositoryFactory _factory;
+    private readonly string _snapshotPath;
     private string? _versionToken;
+
+    public TodoQingdanRepository(
+        TodoQingdanRepositoryFactory factory,
+        string widgetId,
+        string cacheDirectory)
+    {
+        _factory = factory;
+        _snapshotPath = Path.Combine(cacheDirectory, Sanitize(widgetId) + ".json");
+    }
 
     public bool CanWrite => false;
     public string AttachmentDirectory => string.Empty;
@@ -279,7 +566,7 @@ internal sealed class TodoQingdanRepository(TodoQingdanRepositoryFactory factory
     {
         try
         {
-            BridgeResponse response = await factory.ReadTasksAsync();
+            BridgeResponse response = await _factory.ReadTasksAsync();
             if (!response.Succeeded || response.Snapshot is null) throw new InvalidOperationException(response.ErrorCode);
             TodoWidgetData data = Map(response.Snapshot);
             _versionToken = response.Snapshot.Revision;
@@ -288,13 +575,15 @@ internal sealed class TodoQingdanRepository(TodoQingdanRepositoryFactory factory
                 JsonSerializer.Serialize(data, TodoQingdanIntegrationJsonContext.Default.TodoWidgetData));
             return data;
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return await ResilientJsonStore.LoadAsync(
+            TodoWidgetData cached = await ResilientJsonStore.LoadAsync(
                 _snapshotPath,
                 json => JsonSerializer.Deserialize(json, TodoQingdanIntegrationJsonContext.Default.TodoWidgetData) ?? new TodoWidgetData(),
                 () => new TodoWidgetData(),
                 nameof(TodoQingdanRepository));
+            _factory.RecordOfflineCache(cached.Items.Count, ex);
+            return cached;
         }
     }
 

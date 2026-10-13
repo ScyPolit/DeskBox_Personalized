@@ -73,7 +73,7 @@ public sealed class AotStage4E4ContractTests
             1,
             CountOccurrences(
                 xaml,
-                "{x:Bind FileStack.StacksEnabled, Mode=TwoWay}"));
+                "controls:SettingsComboBox.Value=\"{x:Bind FileStack.OpenMode, Mode=TwoWay}\""));
         Assert.Equal(
             1,
             CountOccurrences(
@@ -89,7 +89,7 @@ public sealed class AotStage4E4ContractTests
 
         Assert.DoesNotContain("{Binding ", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("{x:Bind ViewModel.", xaml, StringComparison.Ordinal);
-        Assert.Equal(5, CountOccurrences(xaml, "{x:Bind "));
+        Assert.Equal(6, CountOccurrences(xaml, "{x:Bind "));
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public sealed class AotStage4E4ContractTests
             "src/DeskBox/Features/Interaction/InteractionSettingsViewModel.cs");
 
         Assert.Contains("OnPropertyChanged(nameof(SettingsSummaryText));", fileStack, StringComparison.Ordinal);
-        Assert.Contains("SetProperty(ref _stacksEnabled", fileStack, StringComparison.Ordinal);
+        Assert.Contains("SetProperty(ref _autoStacking", fileStack, StringComparison.Ordinal);
         Assert.Contains("SetProperty(", featureWidgets, StringComparison.Ordinal);
         Assert.Contains("_folderOpenBehavior", featureWidgets, StringComparison.Ordinal);
         Assert.Contains(

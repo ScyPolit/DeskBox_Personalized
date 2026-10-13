@@ -65,6 +65,27 @@ public sealed class SettingsEntryRowHitAreaContractTests
         Assert.DoesNotContain("DrillDownRowStyle", code, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void DesktopOrganizationRuleRows_StayClickableWithoutAManualChevron()
+    {
+        string code = ReadRepositoryFile(
+            "src/DeskBox/Views/SettingsSections/DesktopOrganizationSettingsSection.xaml.cs");
+
+        // The rows are code-built SettingsCards: the template's own action
+        // chevron is the only arrow, and the click handler must accept the
+        // SettingsCard sender. The v3.1 conversion shipped both regressions
+        // at once — a leftover manual chevron (double arrows) and a
+        // `is not Button` guard that swallowed every click.
+        Assert.Contains("IsClickEnabled = true", code, StringComparison.Ordinal);
+        Assert.Contains("card.Click += WidgetRuleButton_Click;", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("Glyph = \"\\uE76C\"", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("is not Button { Tag: string widgetId }", code, StringComparison.Ordinal);
+        Assert.Contains(
+            "sender is not CommunityToolkit.WinUI.Controls.SettingsCard { Tag: string widgetId }",
+            code,
+            StringComparison.Ordinal);
+    }
+
     private static int CountOccurrences(string content, string needle)
     {
         int count = 0;

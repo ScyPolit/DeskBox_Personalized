@@ -217,6 +217,9 @@ public sealed class CloudBackupScopedTests : IDisposable
         DeskBoxRestoreApplyResult result = await service.ApplyPendingRestoreAsync();
 
         Assert.True(result.Succeeded, result.ErrorMessage);
+        // Scoped restores must never trigger the full-restore recovery pass
+        // (startup reconcile, profile-local path rebase).
+        Assert.Equal(DeskBoxRestoreApplyKind.Scoped, result.Kind);
         // Domain replaced with the snapshot's content.
         TodoWidgetData restored = await new TodoWidgetStore(
             Path.Combine(dataDir, "widgets"), "todo-widget").LoadAsync();

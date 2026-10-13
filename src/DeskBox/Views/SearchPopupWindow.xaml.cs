@@ -803,10 +803,7 @@ public sealed partial class SearchPopupWindow : Window
 
     private static void SetPointerCursor(UIElement element, InputSystemCursorShape shape)
     {
-        var property = typeof(UIElement).GetProperty(
-            "ProtectedCursor",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        property?.SetValue(element, InputSystemCursor.Create(shape));
+        UiElementCursorHelper.SetCursor(element, shape);
     }
 
     /// <summary>

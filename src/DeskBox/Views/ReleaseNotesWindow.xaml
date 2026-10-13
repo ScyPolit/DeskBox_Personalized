@@ -79,13 +79,15 @@
         </ScrollViewer>
 
         <Grid x:Name="FooterBar" Grid.Row="2">
+            <!-- Layer fill is the Win11 command-bar/footer material on a Mica base;
+                 large in-app acrylic reads as a washed-out hole.
+                 (Mirrors the SearchPopupWindow footer plate.) -->
             <Border
                 x:Name="FooterAcrylicSurface"
-                Background="{ThemeResource SystemControlAcrylicElementBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="0,1,0,0"
-                IsHitTestVisible="False"
-                Opacity="0.5" />
+                IsHitTestVisible="False" />
             <StackPanel
                 Padding="24,12"
                 HorizontalAlignment="Right"

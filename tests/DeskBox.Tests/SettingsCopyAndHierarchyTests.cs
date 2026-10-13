@@ -138,13 +138,19 @@ public sealed class SettingsCopyAndHierarchyTests
         Assert.DoesNotContain("IsOn=\"{Binding KeepWidgetsVisibleOnShowDesktop", windowXaml, StringComparison.Ordinal);
         Assert.DoesNotContain("IsOn=\"{Binding WeatherAutoLocation", windowXaml, StringComparison.Ordinal);
 
-        // File stacking is redesigned around an explicit master switch plus
-        // an automatic-grouping sub-switch, so the plain dropdown is gone.
-        Assert.Contains("IsOn=\"{x:Bind FileStack.StacksEnabled, Mode=TwoWay}\"", fileWidgetXaml, StringComparison.Ordinal);
-        Assert.Contains("Settings.FileStacks.Enable.Title", windowXaml, StringComparison.Ordinal);
-        Assert.Contains("Settings.FileStacks.Description", windowXaml, StringComparison.Ordinal);
+        // File stacking is redesigned around the auto-stacking switch as the
+        // section's first-level expander; the master switch is retired.
+        Assert.Contains("controls:SettingsComboBox.Value=\"{x:Bind FileStack.OpenMode, Mode=TwoWay}\"", fileWidgetXaml, StringComparison.Ordinal);
         Assert.Contains(
-            "IsOn=\"{Binding StacksEnabled, Mode=TwoWay}\"",
+            "HeaderKey=\"Settings.FileStacks.Auto.Title\"",
+            windowXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HeaderKey=\"Settings.FileStacks.OpenMode.Title\"",
+            windowXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IsOn=\"{Binding AutoStacking, Mode=TwoWay}\"",
             windowXaml,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -155,7 +161,6 @@ public sealed class SettingsCopyAndHierarchyTests
             "public bool WidgetCapsuleModeEnabled",
             appSettings,
             StringComparison.Ordinal);
-        Assert.Contains("IsOn=\"{Binding AutoStacking, Mode=TwoWay}\"", windowXaml, StringComparison.Ordinal);
         Assert.Contains(
             "{x:Bind FeatureWidgets.FolderOpenBehavior, Mode=TwoWay}",
             fileWidgetXaml,

@@ -153,7 +153,7 @@ public sealed class AotStage5B4B1ContractTests
             weatherData,
             StringComparison.Ordinal);
         Assert.Contains(
-            "IsOn=\"{x:Bind FileStack.StacksEnabled, Mode=TwoWay}\"",
+            "controls:SettingsComboBox.Value=\"{x:Bind FileStack.OpenMode, Mode=TwoWay}\"",
             fileWidgetXaml,
             StringComparison.Ordinal);
         Assert.Contains(

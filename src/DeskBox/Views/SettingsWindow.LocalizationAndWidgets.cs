@@ -87,6 +87,9 @@ public sealed partial class SettingsWindow
         }
         RefreshManagedStoragePathWarning();
         RefreshManagedStorageDesktopShortcutState();
+        // RefreshAll re-applied the static DescriptionKey text, dropping the
+        // Win10 note that RefreshDragOutWin10State appends to it.
+        RefreshDragOutWin10State();
         if (TryGetSectionRoute(_currentSettingsSection, out SettingsSectionRoute? route))
         {
             UpdateBreadcrumb(route);

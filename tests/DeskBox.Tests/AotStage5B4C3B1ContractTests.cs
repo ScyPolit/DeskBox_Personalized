@@ -58,7 +58,7 @@ public sealed class AotStage5B4C3B1ContractTests
     }
 
     [Fact]
-    public void PayloadInspection_RequiresLaunchActionsFourSnoozeOptionsAndNoAggregateActions()
+    public void PayloadInspection_RequiresLaunchActionsFourSnoozeOptionsAndAggregateViewAction()
     {
         string app = Read("src/DeskBox/App.AotTodoNotificationLifecycleSmoke.cs");
 
@@ -69,7 +69,7 @@ public sealed class AotStage5B4C3B1ContractTests
         Assert.Contains("single-payload-actions-and-snooze-options-exact", app, StringComparison.Ordinal);
         Assert.Contains("aggregate-payload-has-no-actions", app, StringComparison.Ordinal);
         Assert.Contains("payload.Actions.Count != 2", app, StringComparison.Ordinal);
-        Assert.Contains("payload.Actions.Count == 0", app, StringComparison.Ordinal);
+        Assert.Contains("payload.Actions.Count != 1", app, StringComparison.Ordinal);
         foreach (string selection in new[] { "10m", "30m", "1h", "tomorrow" })
         {
             Assert.Contains(selection, ProductAndFixture(app), StringComparison.Ordinal);

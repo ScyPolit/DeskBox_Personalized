@@ -21,7 +21,7 @@ public interface ISettingsMigration
 public sealed class SettingsMigrationPipeline
 {
     /// <summary>The current schema version that the application expects.</summary>
-    public const int CurrentSchemaVersion = 13;
+    public const int CurrentSchemaVersion = 14;
 
     private readonly List<ISettingsMigration> _migrations = [];
 
@@ -41,6 +41,7 @@ public sealed class SettingsMigrationPipeline
         _migrations.Add(new Migration_10_To_11());
         _migrations.Add(new Migration_11_To_12());
         _migrations.Add(new Migration_12_To_13());
+        _migrations.Add(new Migration_13_To_14());
     }
 
     /// <summary>
@@ -690,6 +691,29 @@ internal sealed class Migration_12_To_13 : ISettingsMigration
         }
 
         return stableId.ToUpperInvariant();
+    }
+}
+
+/// <summary>
+/// Retires the stack master switch from the settings surface. Manual stacks
+/// are always available now, so the persisted master value folds onto the
+/// auto-stacking switch: a lingering master-off profile (schema 9+ users who
+/// toggled it off after the 8→9 split) saw no stacking at all, and the
+/// closest new state is auto stacking off with manual stacks back.
+/// </summary>
+internal sealed class Migration_13_To_14 : ISettingsMigration
+{
+    public int FromVersion => 13;
+
+    public void Migrate(AppSettings settings)
+    {
+        FileWidgetSettingsSlice fileWidget = settings.FileWidget;
+        if (!fileWidget.FileStacksEnabled)
+        {
+            fileWidget.FileStackAutoStacking = false;
+        }
+
+        fileWidget.FileStacksEnabled = true;
     }
 }
 

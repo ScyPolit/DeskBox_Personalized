@@ -560,6 +560,8 @@ public sealed partial class BackupSettingsViewModel
                 Localize("Settings.CloudBackup.Password.Saved"),
             BackupPageMessageKind.PasswordMissing =>
                 Localize("Settings.CloudBackup.Password.NotSaved"),
+            BackupPageMessageKind.PasswordEmpty =>
+                Localize("Settings.CloudBackup.Password.EmptyBody"),
             BackupPageMessageKind.PasswordSaveFailed =>
                 Format("Settings.CloudBackup.Password.SaveFailed", message.Error ?? string.Empty),
             BackupPageMessageKind.ProbeSucceeded =>

@@ -59,10 +59,10 @@ public static class JumpListService
 
             jumpList.Items.Clear();
 
-            AddItem(jumpList, localization.T("JumpList.ToggleWidgets"), ArgToggleWidgets, "toggle");
-            AddItem(jumpList, localization.T("JumpList.NewFolderWidget"), ArgNewFolderWidget, "newfolder");
-            AddItem(jumpList, localization.T("JumpList.OpenSettings"), ArgOpenSettings, "settings");
-            AddItem(jumpList, localization.T("JumpList.OpenStorage"), ArgOpenStorage, "storage");
+            AddItem(jumpList, localization.T("JumpList.ToggleWidgets"), ArgToggleWidgets);
+            AddItem(jumpList, localization.T("JumpList.NewFolderWidget"), ArgNewFolderWidget);
+            AddItem(jumpList, localization.T("JumpList.OpenSettings"), ArgOpenSettings);
+            AddItem(jumpList, localization.T("JumpList.OpenStorage"), ArgOpenStorage);
 
             await jumpList.SaveAsync();
             App.LogVerbose("[JumpList] Jump list configured successfully");
@@ -159,15 +159,15 @@ public static class JumpListService
     private static void AddItem(
         Windows.UI.StartScreen.JumpList jumpList,
         string displayName,
-        string arguments,
-        string groupId)
+        string arguments)
     {
         try
         {
             var item = Windows.UI.StartScreen.JumpListItem.CreateWithArguments(
                 arguments,
                 displayName);
-            item.GroupName = "DeskBox";
+            // No GroupName: custom items without one fall into the system-
+            // localized "Tasks" section instead of an unlocalized header.
             item.Description = displayName;
             jumpList.Items.Add(item);
         }

@@ -59,11 +59,11 @@
                 <toolkit:SettingsCard.HeaderIcon>
                     <FontIcon Glyph="&#xE81E;" />
                 </toolkit:SettingsCard.HeaderIcon>
-                <ToggleSwitch svc:Localized.AutomationNameKey="Settings.FileStacks.Title"
-                    MinWidth="0"
-                    OnContent=""
-                    OffContent=""
-                    IsOn="{x:Bind FileStack.StacksEnabled, Mode=TwoWay}" />
+                <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.OpenMode.Title"
+                    MinWidth="{StaticResource SettingsControlMinWidth}"
+                    VerticalAlignment="Center"
+                    ItemsSource="{x:Bind FileStack.AvailableOpenModeOptions, Mode=OneWay}"
+                    controls:SettingsComboBox.Value="{x:Bind FileStack.OpenMode, Mode=TwoWay}" />
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard

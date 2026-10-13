@@ -10,8 +10,8 @@ namespace DeskBox.Features.FileStack;
 
 /// <summary>
 /// File-stack-section settings editor. Owns the section's XAML binding
-/// surface (the master switch, auto-stacking, the grouping mode including
-/// the custom-rule collection, the threshold, ordering, open mode, popover
+/// surface (auto-stacking, the grouping mode including the custom-rule
+/// collection, the threshold, ordering, the open mode with its popover
 /// layout and style, and the unmatched-file behavior): persisted fields
 /// project through <see cref="IFileStackSettings"/> snapshots (normalized
 /// with the old shell-constructor semantics), user edits write through the
@@ -81,7 +81,6 @@ public sealed partial class FileStackSettingsViewModel : ObservableObject
     private readonly Func<string, object[], string> _format;
     private bool _isSyncingPresentation;
     private bool _isSynchronizingRules;
-    private bool _stacksEnabled = true;
     private bool _autoStacking;
     private string _groupBy = FileStackOptionKinds.GroupByKind;
     private int _threshold = FileStackOptionKinds.DefaultThreshold;
@@ -114,27 +113,6 @@ public sealed partial class FileStackSettingsViewModel : ObservableObject
 
     public ObservableCollection<FileStackCustomRuleEditor> CustomRules { get; } = [];
 
-    public bool StacksEnabled
-    {
-        get => _stacksEnabled;
-        set
-        {
-            if (!SetProperty(ref _stacksEnabled, value))
-            {
-                return;
-            }
-
-            OnPropertyChanged(nameof(SettingsSummaryText));
-            OnPropertyChanged(nameof(CanAddRule));
-            if (_isSyncingPresentation)
-            {
-                return;
-            }
-
-            _settings.SetFileStacksEnabled(value);
-        }
-    }
-
     public bool AutoStacking
     {
         get => _autoStacking;
@@ -146,6 +124,7 @@ public sealed partial class FileStackSettingsViewModel : ObservableObject
             }
 
             OnPropertyChanged(nameof(SettingsSummaryText));
+            OnPropertyChanged(nameof(CanAddRule));
             if (_isSyncingPresentation)
             {
                 return;
@@ -230,6 +209,7 @@ public sealed partial class FileStackSettingsViewModel : ObservableObject
                 return;
             }
 
+            OnPropertyChanged(nameof(IsPopoverOpenMode));
             if (_isSyncingPresentation)
             {
                 return;
@@ -238,6 +218,13 @@ public sealed partial class FileStackSettingsViewModel : ObservableObject
             _settings.SetFileStackOpenMode(normalized);
         }
     }
+
+    /// <summary>
+    /// Whether the popover-only cards (layout and visual style) are
+    /// configurable: popover expansion uses them, inline expansion freezes
+    /// both.
+    /// </summary>
+    public bool IsPopoverOpenMode => _openMode == FileStackOptionKinds.OpenModePopover;
 
     public string PopoverLayout
     {
@@ -302,7 +289,7 @@ public sealed partial class FileStackSettingsViewModel : ObservableObject
 
     public bool HasNoRules => CustomRules.Count == 0;
 
-    public bool CanAddRule => StacksEnabled &&
+    public bool CanAddRule => AutoStacking &&
         CustomRules.Count < FileStackOptionKinds.MaxCustomRules;
 
     public string PreviewSummaryText
@@ -312,18 +299,13 @@ public sealed partial class FileStackSettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The file-widget overview row's capability summary (Off / manual /
-    /// custom-rule count / on), derived from the persisted projection.
+    /// The file-widget overview row's capability summary (Manual / custom-rule
+    /// count / on), derived from the persisted projection.
     /// </summary>
     public string SettingsSummaryText
     {
         get
         {
-            if (!StacksEnabled)
-            {
-                return _localize("Settings.FileStacks.Status.Off");
-            }
-
             if (!AutoStacking)
             {
                 return _localize("Settings.FileStacks.Status.Manual");
@@ -497,7 +479,6 @@ public sealed partial class FileStackSettingsViewModel : ObservableObject
         _isSyncingPresentation = true;
         try
         {
-            StacksEnabled = snapshot.FileStacksEnabled;
             AutoStacking = snapshot.FileStackAutoStacking;
             GroupBy = FileStackOptionKinds.NormalizeGroupBy(snapshot.FileStackGroupBy);
             Threshold = FileStackOptionKinds.NormalizeThreshold(snapshot.FileStackThreshold);

@@ -16,6 +16,7 @@ using H.NotifyIcon;
 using H.NotifyIcon.Core;
 using Microsoft.Windows.AppLifecycle;
 using Microsoft.Windows.AppNotifications;
+using Microsoft.Windows.AppNotifications.Builder;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -65,6 +66,12 @@ public partial class App : Application
     private const string TodoSnoozeConfirmationNotificationSource = "todoSnoozeConfirmation";
     private const string TodoSnoozeConfirmationNotificationGroup = "todo-feedback";
     private const string TodoSnoozeConfirmationNotificationTag = "todo-snooze-confirmation";
+    private const string TodoReminderNotificationTag = "todo-reminder";
+    private const string TodoReminderNotificationGroup = "todo";
+    private const string DesktopOrganizationNotificationGroup = "desktop-organization";
+    private const string DesktopOrganizationTargetUnavailableNotificationTag = "desktop-organization-target-unavailable";
+    private const string FolderMappingNotificationGroup = "folder-mapping";
+    private const string FolderMappingConflictNotificationTag = "folder-mapping-conflict";
 
     // Feature-runtime registry keys (Services/FeatureRuntimeRegistry). They
     // intentionally read like the matching shutdown step names.
@@ -1108,13 +1115,40 @@ public partial class App : Application
             // whose normalization writes are the first bulk mutation of the
             // session, so the captured snapshot still reflects the previous
             // session.
+            // Exception — the launch that applied a full restore: the options
+            // above were read from the raw, not-yet-rebased settings, so a
+            // scheduled snapshot here would target the source machine's
+            // profile (misleading fallback warning under standard rights, or
+            // a foreign account's directory tree under permissive ACLs). The
+            // pre-restore safety archive from the apply already protects this
+            // state; the next launch snapshots with rebased options.
+            bool skipStartupAutomaticSnapshot = PostRestoreRecoveryPolicy
+                .ShouldSkipStartupScheduledSnapshot(restoreResult.Kind, restoreResult.Succeeded);
             Task startupAutomaticSnapshotTask = RunOptionalStartupStepAsync(
                 "automatic-snapshot",
-                async () => await _backupRuntime.RunScheduledLocalAsync());
+                async () =>
+                {
+                    if (skipStartupAutomaticSnapshot)
+                    {
+                        Log("[DataBackup] Skipped the startup automatic snapshot on the restore launch; " +
+                            "the pre-restore safety archive already covers this state.");
+                        return;
+                    }
+
+                    await _backupRuntime.RunScheduledLocalAsync();
+                });
 
             // Phase 1: Load settings (must complete first)
             MarkStartupProgress();
             await RunCriticalStartupStepAsync("settings-load", () => SettingsService.LoadAsync());
+            // Runs only on the launch that applied a full restore, before the
+            // backup options refresh below so a rebased snapshot folder is the
+            // one this session uses. The await is accepted because restore
+            // launches are rare; every other launch returns immediately.
+            PostRestoreRecoverySummary postRestoreRecovery = PostRestoreRecoverySummary.None;
+            await RunOptionalStartupStepAsync(
+                "post-restore-recovery",
+                async () => postRestoreRecovery = await RecoverMachineLocalStateAfterRestoreAsync(restoreResult));
             await RunCriticalStartupStepAsync("todo-repository", _todoRepositoryFactory.InitializeAsync);
             RefreshAutomaticBackupOptionsFromSettings();
             SettingsService.SettingsChanged += OnBackupSettingsChanged;
@@ -1365,7 +1399,8 @@ public partial class App : Application
             await RunOptionalStartupStepAsync(
                 "external-activation-initialization",
                 CompleteExternalActivationInitializationAsync);
-            RunOptionalStartupStep("restore-result-notification", () => ShowDataRestoreResultNotification(restoreResult));
+            RunOptionalStartupStep("restore-result-notification", () =>
+                ShowDataRestoreResultNotification(restoreResult, postRestoreRecovery));
             RunOptionalStartupStep("settings-recovery-notification", ShowSettingsLoadRecoveryNotification);
             if (managedStorageRootUnavailable)
             {
@@ -1447,7 +1482,8 @@ public partial class App : Application
                     (titleKey, bodyKey) => ShowSettingsNotification(
                         titleKey,
                         bodyKey,
-                        NotificationIcon.Warning)));
+                        NotificationIcon.Warning,
+                        "AppearanceMaterialSettings")));
 
             // Configure taskbar Jump List with quick actions
             SafeFireAndForget(
@@ -1574,6 +1610,90 @@ public partial class App : Application
         {
             Log($"[AutoStart] One-time default failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Adapts a freshly applied full restore to this machine. The archived
+    /// settings describe the source machine: its startup registration and its
+    /// user-profile-local paths do not exist here. The startup choice is
+    /// re-registered only when the restored setting is "on" and this machine
+    /// has no registration of its own (AutoStartDefaultApplied=true keeps the
+    /// one-time default out of the way, so the two never race on the task
+    /// backend); profile-local paths are rebased from the source user profile
+    /// derived off the backup manifest. Scoped cloud restores never touch
+    /// these settings and are skipped.
+    /// </summary>
+    private async Task<PostRestoreRecoverySummary> RecoverMachineLocalStateAfterRestoreAsync(
+        DeskBoxRestoreApplyResult restoreResult)
+    {
+        if (restoreResult.Kind != DeskBoxRestoreApplyKind.Full || !restoreResult.Succeeded)
+        {
+            return PostRestoreRecoverySummary.None;
+        }
+
+        bool autoStartReRegistered = false;
+        if (SettingsService.Settings.Core.AutoStart && SettingsService.Settings.Core.AutoStartDefaultApplied)
+        {
+            // Registration state reads and writes shell out to schtasks (and
+            // the packaged channel may prompt for consent), so they stay off
+            // the UI thread exactly like the one-time default.
+            StartupRegistrationState state = await Task.Run(() => StartupService.Current.GetState());
+            if (RestoreAutoStartReconcilePolicy.ShouldRegister(SettingsService.Settings.Core.AutoStart, state))
+            {
+                StartupOperationResult result = await Task.Run(() => StartupService.SetEnabled(true));
+                // Only a live registration backs the notification's assertion:
+                // the packaged channel's Pending means the consent dialog is
+                // still in flight and the user may decline it.
+                autoStartReRegistered = RestoreAutoStartReconcilePolicy.IsRegistered(result.State);
+                Log($"[DataBackup] Post-restore autostart reconcile: {state} → {result.State}.");
+            }
+            else
+            {
+                Log($"[DataBackup] Post-restore autostart reconcile: state={state}, left as-is.");
+            }
+        }
+
+        RestorePathRebaseResult rebase = RestoreMachineLocalPathRebase.Rebase(
+            SettingsService.Settings,
+            restoreResult.SourceDataPath,
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        bool localPathsRebased = false;
+        if (rebase.Changed)
+        {
+            if (await SettingsService.SaveCheckedAsync())
+            {
+                localPathsRebased = true;
+                // The rebased root is where file widgets resolve immediately;
+                // create it so an empty-but-valid folder is what they see.
+                if (rebase.RebasedManagedStorageRootPath is { } storageRoot)
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(storageRoot);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"[DataBackup] Post-restore storage root create failed: {ex.Message}");
+                    }
+                }
+
+                Log(
+                    $"[DataBackup] Post-restore path rebase: settings={rebase.SettingsPathsRebased} " +
+                    $"widgets={rebase.WidgetsRebased} sourceProfile='{rebase.SourceProfileRoot}'.");
+            }
+            else
+            {
+                // The rebased values live on only in this session's memory;
+                // the disk still holds the source machine's paths. The
+                // notification must not claim success, and manufacturing the
+                // new root directory would paper over the persistence
+                // failure the settings surface is already reporting.
+                Log("[DataBackup] Post-restore path rebase could not be persisted; " +
+                    "disk paths were left unchanged.");
+            }
+        }
+
+        return new PostRestoreRecoverySummary(autoStartReRegistered, localPathsRebased);
     }
 
     private async Task CompleteStartupDesktopLayerInitializationAsync(
@@ -2182,6 +2302,32 @@ public partial class App : Application
 
             _ = RaiseTrayWidgetsAsync();
         }
+        else if (notificationArguments.TryGetValue("type", out string? updateNotificationType) &&
+                 string.Equals(
+                     updateNotificationType,
+                     "update",
+                     StringComparison.OrdinalIgnoreCase))
+        {
+            // Same target as the tray's About entry, without the tray-flyout
+            // close delay the tray path waits out.
+            OpenAboutSettingsFromTray();
+        }
+        else if (notificationArguments.TryGetValue("type", out string? settingsNotificationType) &&
+                 string.Equals(
+                     settingsNotificationType,
+                     "settings",
+                     StringComparison.OrdinalIgnoreCase))
+        {
+            if (notificationArguments.TryGetValue("section", out string? settingsSectionTag) &&
+                !string.IsNullOrWhiteSpace(settingsSectionTag))
+            {
+                ShowSettings(settingsSectionTag);
+            }
+            else
+            {
+                ShowSettings();
+            }
+        }
         else
         {
             _ = RaiseTrayWidgetsAsync();
@@ -2221,7 +2367,7 @@ public partial class App : Application
             ],
             options: new NativeAppNotificationOptions(
                 Tag: "desktop-auto-organization",
-                Group: "desktop-organization"));
+                Group: DesktopOrganizationNotificationGroup));
     }
 
     /// <summary>
@@ -2256,7 +2402,17 @@ public partial class App : Application
             : LocalizationService.Format(
                 "DesktopOrganization.Auto.TargetUnavailableBody.Count",
                 summary.WidgetNames.Count);
-        if (_nativeNotificationService?.TryShow(title, message) == true || _trayIcon is null)
+        if (_nativeNotificationService?.TryShow(
+                title,
+                message,
+                new Dictionary<string, string>
+                {
+                    ["type"] = "settings",
+                    ["section"] = "DesktopOrganizationSettings"
+                },
+                options: new NativeAppNotificationOptions(
+                    Tag: DesktopOrganizationTargetUnavailableNotificationTag,
+                    Group: DesktopOrganizationNotificationGroup)) == true || _trayIcon is null)
         {
             return;
         }
@@ -2334,6 +2490,15 @@ public partial class App : Application
                 $"snooze={result.SnoozeSelection ?? "none"} " +
                 $"targetPresented={result.TargetPresented} " +
                 $"refreshCompleted={result.RefreshCompleted}");
+            if (result.Disposition == TodoNotificationActivationRouter.DispositionCompleted &&
+                _nativeNotificationService is { } reminderNotificationService)
+            {
+                // The system already retracts the banner on the completion
+                // button; this also clears the reminder's Action Center entry.
+                SafeFireAndForget(() => reminderNotificationService.RemoveByTagAndGroupAsync(
+                    TodoReminderNotificationTag,
+                    TodoReminderNotificationGroup));
+            }
 #if DESKBOX_NATIVE_AOT && DESKBOX_AOT_SMOKE_HARNESS
             RecordAotTodoNotificationSurfaceRoute(result);
 #endif
@@ -2502,7 +2667,11 @@ public partial class App : Application
             return;
         }
 
-        if (TryShowNativeTodoReminderNotification(notification))
+        if (TryShowNativeTodoReminderNotification(
+                notification,
+                new NativeAppNotificationOptions(
+                    TodoReminderNotificationTag,
+                    TodoReminderNotificationGroup)))
         {
             Log($"[TodoReminder] Native notification shown count={notification.Count} widget={notification.WidgetId ?? "none"} item={notification.ItemId ?? "none"}");
             return;
@@ -2548,6 +2717,13 @@ public partial class App : Application
         List<NativeAppNotificationComboBox>? comboBoxes = null;
         if (notification.Count == 1 && !string.IsNullOrWhiteSpace(notification.ItemId))
         {
+            // A single-item reminder already carries the two buttons the
+            // Reminder scenario requires, and the persistent banner matches
+            // "this item is due now" semantics; keep caller tags intact.
+            options = new NativeAppNotificationOptions(
+                options?.Tag,
+                options?.Group,
+                AppNotificationScenario.Reminder);
             comboBoxes =
             [
                 new(
@@ -2582,6 +2758,18 @@ public partial class App : Application
                         ["itemId"] = notification.ItemId ?? string.Empty
                     },
                     TodoReminderSnoozeInputId)
+            ];
+        }
+        else
+        {
+            // Aggregates have no single completable target, so they keep the
+            // plain toast lifecycle (auto-dismiss into Notification Center)
+            // and expose a view button that reuses the body's arguments.
+            actions =
+            [
+                new(
+                    LocalizationService.T("Common.View"),
+                    arguments)
             ];
         }
 
@@ -2714,7 +2902,42 @@ public partial class App : Application
         RefreshTrayMenuText();
         RefreshTrayToolTipText();
 
-        if (_updateNotificationShown || _trayIcon is null)
+        if (_updateNotificationShown)
+        {
+            return;
+        }
+
+        string title = LocalizationService.T("Tray.UpdateAvailableTitle");
+        string message = LocalizationService.Format("Tray.UpdateAvailableMessage", manifest.Version);
+        // A manual check that surfaces a version already on screen (the
+        // settings About page) does not need a toast repeating it.
+        if (_settingsWindow is { IsVisibleToUser: true })
+        {
+            return;
+        }
+
+        var updateArguments = new Dictionary<string, string>
+        {
+            ["type"] = "update"
+        };
+        if (_nativeNotificationService?.TryShow(
+                title,
+                message,
+                updateArguments,
+                [
+                    new NativeAppNotificationAction(
+                        LocalizationService.T("Tray.UpdateOpenSettings"),
+                        updateArguments)
+                ],
+                options: new NativeAppNotificationOptions(
+                    Tag: "update-available",
+                    Group: "update")) == true)
+        {
+            _updateNotificationShown = true;
+            return;
+        }
+
+        if (_trayIcon is null)
         {
             return;
         }
@@ -2722,8 +2945,8 @@ public partial class App : Application
         try
         {
             _trayIcon.ShowNotification(
-                LocalizationService.T("Tray.UpdateAvailableTitle"),
-                LocalizationService.Format("Tray.UpdateAvailableMessage", manifest.Version),
+                title,
+                message,
                 NotificationIcon.Info,
                 customIconHandle: null,
                 largeIcon: true,
@@ -2987,7 +3210,9 @@ public partial class App : Application
         NativeAppNotificationActivation? activation,
         TodoNotificationActivationRouteResult result);
 
-    private void ShowDataRestoreResultNotification(DeskBoxRestoreApplyResult result)
+    private void ShowDataRestoreResultNotification(
+        DeskBoxRestoreApplyResult result,
+        PostRestoreRecoverySummary recovery)
     {
         if (!result.HadPendingRestore)
         {
@@ -2998,12 +3223,21 @@ public partial class App : Application
             ? "Settings.DataBackup.RestoreAppliedTitle"
             : "Settings.DataBackup.RestoreApplyFailedTitle");
         string message = result.Succeeded
-            ? LocalizationService.T("Settings.DataBackup.RestoreAppliedBody")
+            ? BuildRestoreAppliedMessage(recovery)
             : LocalizationService.Format(
                 "Settings.DataBackup.RestoreApplyFailedBody",
                 result.ErrorMessage ?? string.Empty);
+        // A failed restore deep-links to the backup section it blocks; a
+        // successful one returns the user to the widget board.
+        Dictionary<string, string>? restoreArguments = result.Succeeded
+            ? null
+            : new Dictionary<string, string>
+            {
+                ["type"] = "settings",
+                ["section"] = "BackupRestoreSettings"
+            };
 
-        if (_nativeNotificationService?.TryShow(title, message) == true || _trayIcon is null)
+        if (_nativeNotificationService?.TryShow(title, message, restoreArguments) == true || _trayIcon is null)
         {
             return;
         }
@@ -3027,6 +3261,27 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// The restore-complete body plus one line per recovery action the launch
+    /// performed, so a cross-machine restore tells the user its startup
+    /// registration and local paths were adapted to this machine.
+    /// </summary>
+    private string BuildRestoreAppliedMessage(PostRestoreRecoverySummary recovery)
+    {
+        string message = LocalizationService.T("Settings.DataBackup.RestoreAppliedBody");
+        if (recovery.AutoStartReRegistered)
+        {
+            message += "\n" + LocalizationService.T("Settings.DataBackup.RestoreAppliedAutoStartNote");
+        }
+
+        if (recovery.LocalPathsRebased)
+        {
+            message += "\n" + LocalizationService.T("Settings.DataBackup.RestoreAppliedLocalPathsNote");
+        }
+
+        return message;
+    }
+
     private void ShowSettingsLoadRecoveryNotification()
     {
         switch (SettingsService.LastLoadRecoveryState)
@@ -3035,13 +3290,15 @@ public partial class App : Application
                 ShowSettingsNotification(
                     "Settings.Persistence.RecoveredTitle",
                     "Settings.Persistence.RecoveredBody",
-                    NotificationIcon.Info);
+                    NotificationIcon.Info,
+                    "Maintenance");
                 break;
             case SettingsLoadRecoveryState.DefaultsAfterFailure:
                 ShowSettingsNotification(
                     "Settings.Persistence.ResetTitle",
                     "Settings.Persistence.ResetBody",
-                    NotificationIcon.Warning);
+                    NotificationIcon.Warning,
+                    "Maintenance");
                 break;
         }
 
@@ -3072,7 +3329,8 @@ public partial class App : Application
         ShowSettingsNotification(
             "Settings.Persistence.SaveFailedTitle",
             "Settings.Persistence.SaveFailedBody",
-            NotificationIcon.Warning);
+            NotificationIcon.Warning,
+            "Maintenance");
     }
 
     private void RefreshAutomaticBackupOptionsFromSettings()
@@ -3090,7 +3348,8 @@ public partial class App : Application
                 (titleKey, bodyKey) => ShowSettingsNotification(
                     titleKey,
                     bodyKey,
-                    NotificationIcon.Warning)));
+                    NotificationIcon.Warning,
+                    "AppearanceMaterialSettings")));
     }
 
     private void OnBackupSettingsChanged()
@@ -3133,7 +3392,8 @@ public partial class App : Application
             ShowSettingsNotification(
                 "Settings.CloudBackup.UploadUnverified.Title",
                 "Settings.CloudBackup.UploadUnverified.Body",
-                NotificationIcon.Warning);
+                NotificationIcon.Warning,
+                "CloudBackupSettings");
             return;
         }
 
@@ -3149,7 +3409,8 @@ public partial class App : Application
         ShowSettingsNotification(
             "Settings.CloudBackup.ScheduledFailure.Title",
             "Settings.CloudBackup.ScheduledFailure.Body",
-            NotificationIcon.Warning);
+            NotificationIcon.Warning,
+            "CloudBackupSettings");
     }
 
     private void OnAutomaticBackupFallbackDetected()
@@ -3164,22 +3425,34 @@ public partial class App : Application
         ShowSettingsNotification(
             "Settings.DataBackup.AutomaticBackupDirectory.FallbackTitle",
             "Settings.DataBackup.AutomaticBackupDirectory.FallbackBody",
-            NotificationIcon.Warning);
+            NotificationIcon.Warning,
+            "BackupRestoreSettings");
     }
 
     private void ShowSettingsNotification(
         string titleKey,
         string bodyKey,
-        NotificationIcon icon)
+        NotificationIcon icon,
+        string? sectionTag = null)
     {
         if (LocalizationService is null || IsShuttingDown)
         {
             return;
         }
 
+        // Failure notices deep-link their body click into the owning settings
+        // section; status notices without a section keep the raise-widgets
+        // fallback below.
+        Dictionary<string, string>? arguments = string.IsNullOrWhiteSpace(sectionTag)
+            ? null
+            : new Dictionary<string, string>
+            {
+                ["type"] = "settings",
+                ["section"] = sectionTag
+            };
         string title = LocalizationService.T(titleKey);
         string message = LocalizationService.T(bodyKey);
-        if (_nativeNotificationService?.TryShow(title, message) == true || _trayIcon is null)
+        if (_nativeNotificationService?.TryShow(title, message, arguments) == true || _trayIcon is null)
         {
             return;
         }
@@ -3212,7 +3485,14 @@ public partial class App : Application
 
         string title = LocalizationService.T("Settings.ManagedPath.UnavailableTitle");
         string message = LocalizationService.T("Settings.ManagedPath.UnavailableBody");
-        if (_nativeNotificationService?.TryShow(title, message) == true || _trayIcon is null)
+        if (_nativeNotificationService?.TryShow(
+                title,
+                message,
+                new Dictionary<string, string>
+                {
+                    ["type"] = "settings",
+                    ["section"] = "ManagedStorage"
+                }) == true || _trayIcon is null)
         {
             return;
         }
@@ -3247,7 +3527,14 @@ public partial class App : Application
         string message = LocalizationService.T("Settings.Recovery.AvailableBody");
         Log($"[DataBackup] Recovery snapshot available after fresh settings start: {snapshot.Path}");
 
-        if (_nativeNotificationService?.TryShow(title, message) == true || _trayIcon is null)
+        if (_nativeNotificationService?.TryShow(
+                title,
+                message,
+                new Dictionary<string, string>
+                {
+                    ["type"] = "settings",
+                    ["section"] = "BackupRestoreSettings"
+                }) == true || _trayIcon is null)
         {
             return;
         }
@@ -4964,6 +5251,22 @@ public partial class App : Application
         await ShutdownApplicationAsync();
     }
 
+    /// <summary>
+    /// Delayed hard termination that guarantees the process dies even when
+    /// Application.Exit fails to unwind every thread. A pool thread, so it
+    /// never keeps a healthy shutdown alive; the log drain mirrors the
+    /// startup fatal path so the exit tail is not swallowed.
+    /// </summary>
+    private static void ArmShutdownExitBackstop(TimeSpan delay)
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(delay);
+            DrainLogQueue();
+            Environment.Exit(0);
+        });
+    }
+
     private async Task ShutdownApplicationAsync()
     {
         bool dependentTeardownCompleted = true;
@@ -4998,9 +5301,10 @@ public partial class App : Application
                 // The watchdog path guarantees process death within seconds;
                 // releasing the mutex there would open a window where a new
                 // instance starts while this process may still be writing.
-                // Let process death release it instead. The throw path has no
-                // watchdog, so the manual release must remain unconditional
-                // there to never leave a pumping process holding the mutex.
+                // Let process death release it instead. The throw path
+                // finishes its writes before Exit(), so the manual release
+                // must remain unconditional there to never leave a pumping
+                // process holding the mutex.
                 if (dependentTeardownCompleted)
                 {
                     try
@@ -5015,19 +5319,17 @@ public partial class App : Application
                 try { DrainLogQueue(); }
                 finally
                 {
-                    if (!dependentTeardownCompleted)
-                    {
-                        // Application.Exit is deferred through the XAML
-                        // message loop, and the skipped teardown can keep
-                        // that loop alive after Exit returns (measured:
-                        // the deadline probe stayed pumping forever).
-                        // The deadline path must still terminate.
-                        _ = Task.Run(async () =>
-                        {
-                            await Task.Delay(TimeSpan.FromSeconds(3));
-                            Environment.Exit(0);
-                        });
-                    }
+                    // Application.Exit only requests the XAML loop to stop.
+                    // When teardown was skipped, its pump can stay alive after
+                    // Exit returns (measured: the deadline probe pumped
+                    // forever); even a completed teardown can leave foreign
+                    // threads parking the process as a silent zombie — tray
+                    // gone, mutex released, process resident and pinning the
+                    // thumbnail proxy's stdin pipe (feedback 555/556). Arm the
+                    // hard exit on every path; a healthy Exit() outruns the
+                    // timer and the delayed call never fires.
+                    ArmShutdownExitBackstop(TimeSpan.FromSeconds(
+                        dependentTeardownCompleted ? 5 : 3));
                     if (dependentTeardownCompleted &&
                         AppRelaunchService.PendingOsRestartOnShutdown &&
                         DistributionService.IsMicrosoftStore)
@@ -5131,6 +5433,11 @@ public partial class App : Application
                 _featureRuntimes?.DisposeAsync(TodoRemindersFeatureRuntimeId) ?? Task.CompletedTask,
                 shutdownGrace, abortFollowingStepsOnTimeout: true),
             ShutdownStep.Sync("notifications", () => { _nativeNotificationService?.Dispose(); _nativeNotificationService = null; }),
+            ShutdownStep.Sync("search-popup-window", () =>
+            {
+                _searchPopupWindow?.Close();
+                _searchPopupWindow = null;
+            }),
             ShutdownStep.Bounded("search-settings", () =>
                 _searchSettings?.StopAsync() ?? Task.CompletedTask,
                 shutdownGrace, abortFollowingStepsOnTimeout: true),
@@ -5152,6 +5459,7 @@ public partial class App : Application
             ShutdownStep.Sync("settings-window", () => { _settingsWindow?.CloseForShutdown(); _settingsWindow = null; }),
             ShutdownStep.Sync("backup-settings", () => _backupSettings?.Dispose()),
             ShutdownStep.Sync("onboarding-window", () => { _onboardingWindow?.Close(); _onboardingWindow = null; }),
+            ShutdownStep.Sync("elevation-notice-window", () => { _elevationNoticeWindow?.Close(); _elevationNoticeWindow = null; }),
             // Closing a surface may commit its final edit/order. Flush after
             // those consumers are closed, while persistence services still live.
             new("settings-flush", async () =>

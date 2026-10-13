@@ -38,7 +38,8 @@ public sealed class FeatureWidgetsSettingsCoordinator : IFeatureWidgetsSettings
         return new MusicPresentationSettings(
             music.MusicUseArtworkBackdrop,
             music.MusicEnableCoverHoverMotion,
-            SettingsService.NormalizeMusicDisplayMode(music.MusicDisplayMode));
+            SettingsService.NormalizeMusicDisplayMode(music.MusicDisplayMode),
+            music.MusicHideTimelineWhenUnavailable);
     }
 
     public WeatherPresentationSettings ReadWeatherPresentation()
@@ -114,6 +115,20 @@ public sealed class FeatureWidgetsSettingsCoordinator : IFeatureWidgetsSettings
         return true;
     }
 
+    public bool SetMusicHideTimelineWhenUnavailable(bool value)
+    {
+        ThrowIfStopped();
+        MusicSettingsSlice music = _settings.Settings.Music;
+        if (music.MusicHideTimelineWhenUnavailable == value)
+        {
+            return false;
+        }
+
+        music.MusicHideTimelineWhenUnavailable = value;
+        _settings.SaveDebounced();
+        return true;
+    }
+
     public void ResetMusicPresentationPreferences(bool scheduleSave = true)
     {
         ThrowIfStopped();
@@ -121,12 +136,14 @@ public sealed class FeatureWidgetsSettingsCoordinator : IFeatureWidgetsSettings
         bool changed =
             music.MusicUseArtworkBackdrop != true ||
             music.MusicEnableCoverHoverMotion != true ||
+            music.MusicHideTimelineWhenUnavailable != true ||
             !string.Equals(
                 music.MusicDisplayMode,
                 SettingsService.MusicDisplayModeAuto,
                 StringComparison.Ordinal);
         music.MusicUseArtworkBackdrop = true;
         music.MusicEnableCoverHoverMotion = true;
+        music.MusicHideTimelineWhenUnavailable = true;
         music.MusicDisplayMode = SettingsService.MusicDisplayModeAuto;
         if (scheduleSave && changed)
         {

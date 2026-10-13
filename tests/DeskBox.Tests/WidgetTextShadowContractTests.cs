@@ -193,7 +193,7 @@ public sealed class WidgetTextShadowContractTests
     public void Setting_TogglesThroughTheSchemaAndBothWindows()
     {
         Assert.Contains(
-            "CurrentSchemaVersion = 13",
+            "CurrentSchemaVersion = 14",
             File.ReadAllText(TestPaths.FromRepository(
                 "src/DeskBox/Services/SettingsMigrationService.cs")),
             StringComparison.Ordinal);
@@ -219,6 +219,47 @@ public sealed class WidgetTextShadowContractTests
         string bridge = File.ReadAllText(TestPaths.FromRepository(
             "src/DeskBox/Features/Appearance/AppearanceSettingsViewModel.AotBindableProperties.cs"));
         Assert.Contains("nameof(WidgetTextShadowEnabled)", bridge, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MarkdownBody_ShadowsThroughTheSnapshotMirror()
+    {
+        // RichTextBlock exposes no GetAlphaMask, so the markdown body cannot
+        // cast through its own element. The document view overlays a
+        // transparent Image mirror carrying a RenderTargetBitmap snapshot of
+        // the rendered document — images DO provide GetAlphaMask — and the
+        // mirror's edge polarity follows the document's semantic foreground
+        // through the EdgeColor override.
+        string helper = ReadHelper();
+        Assert.Contains("Image image => image.GetAlphaMask()", helper, StringComparison.Ordinal);
+        Assert.Contains("EdgeColorProperty", helper, StringComparison.Ordinal);
+        Assert.Contains("ShadowSettingChanged", helper, StringComparison.Ordinal);
+
+        string view = File.ReadAllText(TestPaths.FromRepository(
+            "src/DeskBox/Controls/MarkdownDocumentView.cs"));
+        Assert.Contains(
+            "WidgetTextShadow.SetCast(_shadowMirror, true)",
+            view,
+            StringComparison.Ordinal);
+        Assert.Contains("QueueShadowSnapshot();", view, StringComparison.Ordinal);
+        Assert.Contains("RenderTargetBitmap", view, StringComparison.Ordinal);
+        Assert.Contains("WidgetTextShadow.SetEdgeColor(", view, StringComparison.Ordinal);
+
+        // The explicitly-styled inline-editor titles must opt in through the
+        // keyed style: an explicit Style bypasses the implicit Cast style
+        // entirely (the two known misses were WidgetInlineEditor's title and
+        // the custom-due-date overlay title).
+        string app = File.ReadAllText(TestPaths.FromRepository("src/DeskBox/App.xaml"));
+        int styleStart = app.IndexOf(
+            "WidgetInlineEditorTitleTextStyle",
+            StringComparison.Ordinal);
+        Assert.True(styleStart > 0, "WidgetInlineEditorTitleTextStyle missing from App.xaml");
+        int styleEnd = app.IndexOf("</Style>", styleStart, StringComparison.Ordinal);
+        Assert.True(styleEnd > styleStart, "WidgetInlineEditorTitleTextStyle style end missing");
+        Assert.Contains(
+            "helpers:WidgetTextShadow.Cast",
+            app[styleStart..styleEnd],
+            StringComparison.Ordinal);
     }
 
     private static string ReadHelper() => File.ReadAllText(TestPaths.FromRepository(

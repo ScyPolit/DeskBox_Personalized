@@ -5,7 +5,7 @@ namespace DeskBox.Features.Backup;
 
 public enum BackupPageMessageKind
 {
-    None, PasswordSaved, PasswordMissing, PasswordSaveFailed,
+    None, PasswordSaved, PasswordMissing, PasswordSaveFailed, PasswordEmpty,
     ProbeSucceeded, ProbeFailed, ListFailed, NotYetVisible
 }
 
@@ -240,17 +240,29 @@ public sealed partial class BackupSettingsViewModel : ObservableObject, IDisposa
         }
     }
 
-    public Task<bool> SaveCredentialAsync(string secret) => RunCommandAsync(async (endpoint, token) =>
+    public Task<bool> SaveCredentialAsync(string secret)
     {
-        await _settings.SaveAsync();
-        token.ThrowIfCancellationRequested();
-        await _settings.SaveCredentialAsync(endpoint, secret, token);
-    }, BackupPageMessageKind.PasswordSaved, BackupPageMessageKind.PasswordSaveFailed,
-        afterSuccess: () =>
+        // Inline validation via the connection-status message line; bypasses
+        // RunCommandAsync so the empty attempt does not flip IsBusy or clear
+        // a prior message.
+        if (string.IsNullOrWhiteSpace(secret))
         {
-            CredentialSaved = true;
-            _ = RefreshSnapshotsAsync();
-        });
+            Message = new(BackupPageMessageKind.PasswordEmpty);
+            return Task.FromResult(false);
+        }
+
+        return RunCommandAsync(async (endpoint, token) =>
+        {
+            await _settings.SaveAsync();
+            token.ThrowIfCancellationRequested();
+            await _settings.SaveCredentialAsync(endpoint, secret, token);
+        }, BackupPageMessageKind.PasswordSaved, BackupPageMessageKind.PasswordSaveFailed,
+            afterSuccess: () =>
+            {
+                CredentialSaved = true;
+                _ = RefreshSnapshotsAsync();
+            });
+    }
 
     public Task<bool> ProbeAsync(string? secretOverride) => RunCommandAsync(async (endpoint, token) =>
     {

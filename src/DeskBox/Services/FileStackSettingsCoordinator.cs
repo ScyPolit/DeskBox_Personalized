@@ -4,22 +4,22 @@ using DeskBox.Models;
 namespace DeskBox.Services;
 
 /// <summary>
-/// Sole settings-page writer for the file-stack section fields: the stack
-/// master switch, auto-stacking, the grouping mode, the auto-stack threshold,
-/// stack ordering, the open mode, popover layout and style, the unmatched-file
-/// behavior and the custom-rule collection. The section has no live-preview
-/// coupling with the appearance machinery: every edit keeps the original
-/// semantics of normalize (options and threshold), store and schedule one
-/// debounced save, so stack-toggle, grouping and rule changes still reach the
-/// stack projection rebuild only through the regular SettingsChanged consumer
-/// (WidgetViewModel's queued stack-display rebuild), and the shell keeps its
-/// restoring-defaults and snapshot-application guards that decide whether a
-/// callback writes at all. Unchanged writes skip the redundant debounced save,
-/// matching the callback-driven flow where the observable properties only fire
-/// on real changes; the custom-rule replacement compares the projected models
-/// (id, trimmed name, normalized extension list) so re-committing the same
-/// rule set — e.g. a drag that lands back in the original order — does not
-/// trigger a save or a projection rebuild.
+/// Sole settings-page writer for the file-stack section fields: auto-stacking,
+/// the grouping mode, the auto-stack threshold, stack ordering, the open mode,
+/// popover layout and style, the unmatched-file behavior and the custom-rule
+/// collection. The section has no live-preview coupling with the appearance
+/// machinery: every edit keeps the original semantics of normalize (options
+/// and threshold), store and schedule one debounced save, so stack-toggle,
+/// grouping and rule changes still reach the stack projection rebuild only
+/// through the regular SettingsChanged consumer (WidgetViewModel's queued
+/// stack-display rebuild), and the shell keeps its restoring-defaults and
+/// snapshot-application guards that decide whether a callback writes at all.
+/// Unchanged writes skip the redundant debounced save, matching the
+/// callback-driven flow where the observable properties only fire on real
+/// changes; the custom-rule replacement compares the projected models (id,
+/// trimmed name, normalized extension list) so re-committing the same rule
+/// set — e.g. a drag that lands back in the original order — does not trigger
+/// a save or a projection rebuild.
 /// </summary>
 public sealed class FileStackSettingsCoordinator : IFileStackSettings
 {
@@ -37,7 +37,6 @@ public sealed class FileStackSettingsCoordinator : IFileStackSettings
     {
         FileWidgetSettingsSlice fileWidget = _settings.Settings.FileWidget;
         return new(
-            fileWidget.FileStacksEnabled,
             fileWidget.FileStackAutoStacking,
             fileWidget.FileStackGroupBy,
             fileWidget.FileStackThreshold,
@@ -47,15 +46,6 @@ public sealed class FileStackSettingsCoordinator : IFileStackSettings
             fileWidget.FileStackPopoverStyle,
             fileWidget.FileStackUnmatchedBehavior,
             fileWidget.FileStackCustomRules);
-    }
-
-    public void SetFileStacksEnabled(bool value)
-    {
-        ThrowIfStopped();
-        FileWidgetSettingsSlice fileWidget = _settings.Settings.FileWidget;
-        if (fileWidget.FileStacksEnabled == value) return;
-        fileWidget.FileStacksEnabled = value;
-        _settings.SaveDebounced();
     }
 
     public void SetFileStackAutoStacking(bool value)

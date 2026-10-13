@@ -42,7 +42,7 @@ public sealed class SettingsForwardGuardAndChainTests : IDisposable
     }
 
     [Fact]
-    public void Pipeline_ChainsV9Settings_ThroughEveryMigrationToV13()
+    public void Pipeline_ChainsV9Settings_ThroughEveryMigrationToV14()
     {
         var settings = new AppSettings { SchemaVersion = 9 };
         settings.Widgets.Add(new WidgetConfig
@@ -92,7 +92,7 @@ public sealed class SettingsForwardGuardAndChainTests : IDisposable
             new SettingsMigrationPipeline().RunMigrationsOnCopy(settings);
 
         Assert.True(applied);
-        Assert.Equal(13, migrated.SchemaVersion);
+        Assert.Equal(14, migrated.SchemaVersion);
 
         // 12→13 rewrote the key to the v4 identity hash and remapped active.
         string mergedKey = Assert.Single(migrated.WidgetTopologyLayouts).Key;

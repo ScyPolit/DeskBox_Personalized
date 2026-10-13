@@ -69,6 +69,22 @@
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="CornerRadius" Value="16"/>
             </Style>
+            <!-- Brand glow gradients for the illustration canvas. Decorative,
+                 theme-fixed brand art (same blue family as Assets/deskbox.svg);
+                 intentionally identical in Light/Dark — do not theme-split
+                 without re-checking the logo gradient. -->
+            <RadialGradientBrush x:Key="SceneGlowAzureBrush" GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
+                <GradientStop Offset="0" Color="#241691E8"/>
+                <GradientStop Offset="1" Color="#001691E8"/>
+            </RadialGradientBrush>
+            <RadialGradientBrush x:Key="SceneGlowDeepBrush" GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
+                <GradientStop Offset="0" Color="#140B64BF"/>
+                <GradientStop Offset="1" Color="#000B64BF"/>
+            </RadialGradientBrush>
+            <RadialGradientBrush x:Key="SceneGlowSkyBrush" GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
+                <GradientStop Offset="0" Color="#2E58AAFE"/>
+                <GradientStop Offset="1" Color="#0058AAFE"/>
+            </RadialGradientBrush>
         </Grid.Resources>
 
         <Grid.ColumnDefinitions>
@@ -89,28 +105,16 @@
                     Margin="0,0,0,-140"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Bottom"
-                    Opacity="0.6">
-                    <Ellipse.Fill>
-                        <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
-                            <GradientStop Offset="0" Color="#241691E8"/>
-                            <GradientStop Offset="1" Color="#001691E8"/>
-                        </RadialGradientBrush>
-                    </Ellipse.Fill>
-                </Ellipse>
+                    Opacity="0.6"
+                    Fill="{StaticResource SceneGlowAzureBrush}" />
                 <Ellipse
                     Width="300"
                     Height="300"
                     Margin="0,-120,0,0"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Top"
-                    Opacity="0.4">
-                    <Ellipse.Fill>
-                        <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
-                            <GradientStop Offset="0" Color="#140B64BF"/>
-                            <GradientStop Offset="1" Color="#000B64BF"/>
-                        </RadialGradientBrush>
-                    </Ellipse.Fill>
-                </Ellipse>
+                    Opacity="0.4"
+                    Fill="{StaticResource SceneGlowDeepBrush}" />
             <Viewbox
                 x:Name="SceneScaler"
                 Stretch="Uniform"
@@ -120,14 +124,7 @@
                 <Canvas x:Name="SceneStage" Width="360" Height="420">
 
                     <!-- persistent soft glow -->
-                    <Ellipse x:Name="SceneHalo" Canvas.Left="40" Canvas.Top="90" Width="280" Height="280" Opacity="0.55">
-                        <Ellipse.Fill>
-                            <RadialGradientBrush GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.5" RadiusY="0.5">
-                                <GradientStop Offset="0" Color="#2E58AAFE"/>
-                                <GradientStop Offset="1" Color="#0058AAFE"/>
-                            </RadialGradientBrush>
-                        </Ellipse.Fill>
-                    </Ellipse>
+                    <Ellipse x:Name="SceneHalo" Canvas.Left="40" Canvas.Top="90" Width="280" Height="280" Opacity="0.55" Fill="{StaticResource SceneGlowSkyBrush}" />
 
                     <!-- Step 1 hero: DeskBox mark -->
                     <Image
@@ -181,7 +178,17 @@
                         Padding="9"
                         Opacity="0">
                         <Grid RowDefinitions="Auto,*" RowSpacing="8">
-                            <FontIcon HorizontalAlignment="Center" FontSize="24" Glyph="&#xE8A5;" Foreground="{ThemeResource TextFillColorPrimaryBrush}"/>
+                            <!-- Solid txt-style file mark: the dog-ear and text lines are
+                                 carved in the window-base color so the page reads filled
+                                 in every theme. -->
+                            <Canvas Width="20" Height="24" HorizontalAlignment="Center">
+                                <Path
+                                    Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                                    Data="M0,0 H14 L20,6 V24 H0 Z"/>
+                                <Path
+                                    Fill="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                                    Data="M14,0 L20,6 L14,6 Z M3,9.5 H13 V10.9 H3 Z M3,13 H13 V14.4 H3 Z M3,16.5 H10.5 V17.9 H3 Z"/>
+                            </Canvas>
                             <Border Grid.Row="1" Height="4" VerticalAlignment="Bottom" Background="{ThemeResource TextFillColorSecondaryBrush}" CornerRadius="2" Opacity="0.5"/>
                         </Grid>
                     </Border>
@@ -236,27 +243,54 @@
                         BorderThickness="1"
                         CornerRadius="21"
                         Opacity="0">
-                        <Grid Margin="16,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <Ellipse Width="8" Height="8" Fill="{ThemeResource AccentFillColorDefaultBrush}" Opacity="0.7"/>
-                                <Ellipse Width="8" Height="8" Fill="{ThemeResource TextFillColorSecondaryBrush}" Opacity="0.35"/>
-                                <Ellipse Width="8" Height="8" Fill="{ThemeResource TextFillColorSecondaryBrush}" Opacity="0.25"/>
+                        <Grid Margin="13,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                            <!-- Real Windows 11 taskbar icons (Start / Search / Task View)
+                                 so the strip reads as "the taskbar" at a glance. The Start
+                                 mark is fixed Windows blue, identical in Light/Dark like the
+                                 brand art — do not theme-split without re-checking it. -->
+                            <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                                <Path
+                                    Width="17"
+                                    Height="17"
+                                    Stretch="Uniform"
+                                    Data="M0,0 H7.7 V7.7 H0 Z M9.3,0 H17 V7.7 H9.3 Z M0,9.3 H7.7 V17 H0 Z M9.3,9.3 H17 V17 H9.3 Z">
+                                    <Path.Fill>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Offset="0" Color="#57B1F8"/>
+                                            <GradientStop Offset="1" Color="#0C6BC4"/>
+                                        </LinearGradientBrush>
+                                    </Path.Fill>
+                                </Path>
+                                <FontIcon FontSize="14" VerticalAlignment="Center" Glyph="&#xE721;" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <FontIcon FontSize="14" VerticalAlignment="Center" Glyph="&#xE7C4;" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             </StackPanel>
-                            <Border Grid.Column="1" Height="3" VerticalAlignment="Center" Background="{ThemeResource DividerStrokeColorDefaultBrush}" CornerRadius="2"/>
-                            <Grid Grid.Column="2" Width="32" Height="32" VerticalAlignment="Center">
-                                <Border
-                                    x:Name="SceneTrayHalo"
-                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                    CornerRadius="16"
-                                    Opacity="0"/>
-                                <Image Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center" Source="ms-appx:///Assets/deskbox.svg"/>
-                            </Grid>
+                            <!-- Other pinned apps sit between the system icons and the tray corner. -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border Width="15" Height="15" CornerRadius="4" Background="{ThemeResource SubtleFillColorSecondaryBrush}"/>
+                                <Border Width="15" Height="15" CornerRadius="4" Background="{ThemeResource SubtleFillColorTertiaryBrush}"/>
+                            </StackPanel>
+                            <!-- Tray corner: hidden-icons chevron, DeskBox, then the
+                                 wifi/volume/battery group, matching the real layout. -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <FontIcon FontSize="10" VerticalAlignment="Center" Glyph="&#xE70E;" Opacity="0.6" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <Grid Width="32" Height="32">
+                                    <Border
+                                        x:Name="SceneTrayHalo"
+                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                        CornerRadius="16"
+                                        Opacity="0"/>
+                                    <Image Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center" Source="ms-appx:///Assets/deskbox.svg"/>
+                                </Grid>
+                                <FontIcon FontSize="11" VerticalAlignment="Center" Glyph="&#xE701;" Opacity="0.6" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <FontIcon FontSize="11" VerticalAlignment="Center" Glyph="&#xE767;" Opacity="0.6" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                <FontIcon FontSize="11" VerticalAlignment="Center" Glyph="&#xE83F;" Opacity="0.6" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
                         </Grid>
                     </Border>
                     <Border
                         x:Name="SceneTrayMenu"
                         Canvas.Left="88"
-                        Canvas.Top="104"
+                        Canvas.Top="44"
                         Width="256"
                         Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
@@ -266,24 +300,41 @@
                         Opacity="0"
                         RenderTransformOrigin="0.9,1">
                         <StackPanel>
-                            <!-- Glyphs mirror the real Win32 tray menu (App.Tray.cs)
-                                 so onboarding shows the product's actual skin. -->
+                            <!-- Rows mirror the real tray menu (App.Tray.cs) one-to-one:
+                                 same order, same glyphs, same localization keys, so
+                                 every language shows the product's actual skin. The
+                                 conditional update entry stays hidden like the real menu. -->
                             <Grid Style="{StaticResource SceneMenuRow}" ColumnDefinitions="Auto,*" ColumnSpacing="10">
                                 <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE74C;"/>
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" svc:Localized.Key="Tray.OrganizeDesktop"/>
                             </Grid>
+                            <Rectangle Height="1" Margin="7,4" Fill="{ThemeResource DividerStrokeColorDefaultBrush}"/>
                             <Grid Style="{StaticResource SceneMenuRow}" ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE710;"/>
+                                <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE8A5;"/>
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" svc:Localized.Key="Common.NewWidget"/>
                             </Grid>
                             <Grid Style="{StaticResource SceneMenuRow}" ColumnDefinitions="Auto,*" ColumnSpacing="10">
                                 <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE8E5;"/>
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" svc:Localized.Key="Common.NewFolderMapping"/>
                             </Grid>
+                            <Grid Style="{StaticResource SceneMenuRow}" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE710;"/>
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" svc:Localized.Key="Common.AddFeatureWidget"/>
+                            </Grid>
+                            <Rectangle Height="1" Margin="7,4" Fill="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+                            <Grid Style="{StaticResource SceneMenuRow}" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE8B7;"/>
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" svc:Localized.Key="Tray.OpenManagedStorage"/>
+                            </Grid>
                             <Rectangle Height="1" Margin="7,4" Fill="{ThemeResource DividerStrokeColorDefaultBrush}"/>
                             <Grid Style="{StaticResource SceneMenuRow}" ColumnDefinitions="Auto,*" ColumnSpacing="10">
                                 <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE713;"/>
                                 <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" svc:Localized.Key="Tray.Settings"/>
+                            </Grid>
+                            <Rectangle Height="1" Margin="7,4" Fill="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+                            <Grid Style="{StaticResource SceneMenuRow}" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE711;"/>
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="12" svc:Localized.Key="Tray.Exit"/>
                             </Grid>
                         </StackPanel>
                     </Border>

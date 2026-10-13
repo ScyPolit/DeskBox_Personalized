@@ -331,10 +331,7 @@ public sealed partial class ContentWidgetWindow
             ? GetResizeCursorShapeForCurrentState(frameworkElement.Tag as string)
             : InputSystemCursorShape.Arrow;
 
-        var property = typeof(UIElement).GetProperty(
-            "ProtectedCursor",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        property?.SetValue(element, InputSystemCursor.Create(shape));
+        UiElementCursorHelper.SetCursor(element, shape);
     }
 
     // ── Activation ─────────────────────────────────────────────

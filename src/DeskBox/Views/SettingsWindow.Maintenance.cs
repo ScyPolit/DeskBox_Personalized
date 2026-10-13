@@ -548,7 +548,7 @@ public sealed partial class SettingsWindow
             Title = _localizationService.T("Settings.Dialog.RestoreTitle"),
             PrimaryButtonText = _localizationService.T("Common.Restore"),
             CloseButtonText = _localizationService.T("Common.Cancel"),
-            DefaultButton = ContentDialogButton.Primary,
+            DefaultButton = ContentDialogButton.Close,
             Content = new TextBlock
             {
                 Text = _localizationService.T("Settings.Dialog.RestoreBody"),

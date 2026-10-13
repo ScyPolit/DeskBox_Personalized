@@ -59,14 +59,8 @@ public sealed partial class SettingsWindow
             return;
         }
         string password = passwordBox.Password;
-        if (string.IsNullOrWhiteSpace(password))
-        {
-            await ShowInfoDialogAsync(
-                _localizationService.T("Settings.CloudBackup.Password.EmptyTitle"),
-                _localizationService.T("Settings.CloudBackup.Password.EmptyBody"));
-            return;
-        }
-
+        // Empty input is rejected inline by the view model through the
+        // connection-status message line (PasswordEmpty) — no modal dialog.
         if (await _backupSettingsViewModel.SaveCredentialAsync(password))
             passwordBox.Password = string.Empty;
     }

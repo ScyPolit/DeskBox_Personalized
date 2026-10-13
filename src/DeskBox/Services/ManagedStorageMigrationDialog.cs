@@ -78,7 +78,7 @@ internal sealed class ManagedStorageMigrationDialog
                     Location(localization.T("Settings.Dialog.SafeMigrationTo"), newPath)
                 }},
                 new StackPanel { Spacing = 8, Children = { explanation, notes } },
-                status, detail, Footer(back, start)
+                status, detail, Footer(start, back)
             }
         };
         var dialog = Dialog(root, localization);
@@ -198,7 +198,7 @@ internal sealed class ManagedStorageMigrationDialog
             Content = new ScrollViewer { MaxHeight = 130, Content = _technical }
         };
         var links = new StackPanel { Orientation = Orientation.Horizontal, MinHeight = 32, Spacing = 8, Children = { _openSource, _openTarget } };
-        var content = new StackPanel { Spacing = 12, Children = { stateArea, _details, links, Footer(_secondary, _primary) } };
+        var content = new StackPanel { Spacing = 12, Children = { stateArea, _details, links, Footer(_primary, _secondary) } };
         _dialog.Content = content;
         _sizing = new DialogSize(root, _dialog, content);
         _dialog.Closing += (_, args) =>
@@ -340,6 +340,16 @@ internal sealed class ManagedStorageMigrationDialog
         };
         dialog.Resources["ContentDialogMinWidth"] = 0d;
         dialog.Resources["ContentDialogMaxWidth"] = 520d;
+        // Self-drawn footer buttons mean no system Close button exists, so the
+        // built-in Esc accelerator has nothing to fire; route Esc to Hide()
+        // instead. While running, the Closing guard turns this into a stop
+        // request (same path as the stop button).
+        dialog.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key != VirtualKey.Escape) return;
+            args.Handled = true;
+            dialog.Hide();
+        };
         return dialog;
     }
 

@@ -626,7 +626,7 @@ public sealed class TodoSettingsEditorTests : IDisposable
         Assert.Contains("[WinRT.GeneratedBindableCustomProperty([", bridge, StringComparison.Ordinal);
         Assert.Contains("nameof(Enabled)", bridge, StringComparison.Ordinal);
         Assert.Contains("nameof(DefaultFilter)", bridge, StringComparison.Ordinal);
-        Assert.Equal(35, Regex.Matches(bridge, @"nameof\(").Count);
+        Assert.Equal(41, Regex.Matches(bridge, @"nameof\(").Count);
         Assert.DoesNotContain("nameof(ShowAllTab)", bridge, StringComparison.Ordinal);
         Assert.Equal(33, Regex.Matches(bindableShell, @"nameof\(").Count);
     }

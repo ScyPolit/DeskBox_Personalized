@@ -55,7 +55,9 @@ public sealed class AppSettingsFacadeNarrowingContractTests
         // additive — absent files deserialize as null).
         // +1 = widgetGroupSwitchAnimationStyle (group member-switch
         // transition style; additive, absent files deserialize to Auto).
-        Assert.Equal(237, Passthroughs.Length);
+        // +1 = musicHideTimelineWhenUnavailable (music timeline-row hiding;
+        // additive, absent files deserialize to the hide default true).
+        Assert.Equal(238, Passthroughs.Length);
         Assert.Equal(13, SliceAccessors.Length);
     }
 
@@ -63,7 +65,7 @@ public sealed class AppSettingsFacadeNarrowingContractTests
     public void EveryPassthrough_IsAFrozenSchemaMember_AndViceVersa()
     {
         // The facade IS the schema: with the WhenWritingNull member forced on,
-        // the serialized member set is exactly schemaVersion plus the 237
+        // the serialized member set is exactly schemaVersion plus the 238
         // passthrough wire names (camelCase unless a JsonPropertyName
         // overrides it). This proves there is no dead passthrough sitting
         // outside the wire, and no wire member without a passthrough owner.
@@ -73,8 +75,8 @@ public sealed class AppSettingsFacadeNarrowingContractTests
         expected.Add("schemaVersion");
         Assert.True(
             SerializedMemberNames.SetEquals(expected),
-            "Serialized member set must equal schemaVersion + the 237 passthrough wire names.");
-        Assert.Equal(238, SerializedMemberNames.Count);
+            "Serialized member set must equal schemaVersion + the 238 passthrough wire names.");
+        Assert.Equal(239, SerializedMemberNames.Count);
     }
 
     [Fact]

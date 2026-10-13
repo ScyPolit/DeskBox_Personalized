@@ -376,6 +376,10 @@
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="TextTrimming" Value="CharacterEllipsis" />
                 <Setter Property="VerticalAlignment" Value="Center" />
+                <!-- Explicitly styled text bypasses the implicit Cast style;
+                     without this setter the inline-editor titles render
+                     without the widget text shadow. -->
+                <Setter Property="helpers:WidgetTextShadow.Cast" Value="True" />
             </Style>
 
             <Style x:Key="WidgetConfirmCommandButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">

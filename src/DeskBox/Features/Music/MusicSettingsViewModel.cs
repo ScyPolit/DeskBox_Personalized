@@ -75,6 +75,17 @@ public sealed partial class MusicSettingsViewModel : ObservableObject
         }
     }
 
+    [ObservableProperty]
+    public partial bool HideTimelineWhenUnavailable { get; set; } = true;
+
+    partial void OnHideTimelineWhenUnavailableChanged(bool value)
+    {
+        if (!_isSyncingPresentation)
+        {
+            _settings.SetMusicHideTimelineWhenUnavailable(value);
+        }
+    }
+
     public string DisplayMode
     {
         get => _displayMode;
@@ -127,6 +138,7 @@ public sealed partial class MusicSettingsViewModel : ObservableObject
             UseArtworkBackdrop = snapshot.UseArtworkBackdrop;
             EnableCoverHoverMotion = snapshot.EnableCoverHoverMotion;
             DisplayMode = snapshot.DisplayMode;
+            HideTimelineWhenUnavailable = snapshot.HideTimelineWhenUnavailable;
         }
         finally
         {

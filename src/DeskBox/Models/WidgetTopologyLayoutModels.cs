@@ -9,7 +9,7 @@ namespace DeskBox.Models;
 /// </summary>
 public sealed class WidgetTopologyLayoutProfile
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
 
     public int Version { get; set; } = CurrentVersion;
 
@@ -111,4 +111,40 @@ public sealed class WidgetSurfaceLayoutProfile
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? CompactWidth { get; set; }
+
+    /// <summary>
+    /// Authored placement (spec D11). The fields above are its projection onto
+    /// the display's current geometry through the elastic plan.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WidgetSurfaceLayoutReference? Reference { get; set; }
+}
+
+/// <summary>Placement in DIP against the effective work area (frame) it was authored on.</summary>
+public sealed class WidgetSurfaceLayoutReference
+{
+    public double FrameWidth { get; set; }
+
+    public double FrameHeight { get; set; }
+
+    public string? PositionAnchor { get; set; }
+
+    public double PositionMarginX { get; set; }
+
+    public double PositionMarginY { get; set; }
+
+    public double Width { get; set; }
+
+    public double Height { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CompactPositionAnchor { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? CompactPositionMarginX { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? CompactPositionMarginY { get; set; }
+
+    internal WidgetSurfaceLayoutReference Clone() => (WidgetSurfaceLayoutReference)MemberwiseClone();
 }

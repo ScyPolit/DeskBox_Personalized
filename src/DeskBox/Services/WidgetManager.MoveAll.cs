@@ -507,6 +507,7 @@ public sealed partial class WidgetManager
                 BoundsCoordinateVersion = compact.BoundsCoordinateVersion,
             }
             : null,
-        CompactWidth = source.CompactWidth
+        CompactWidth = source.CompactWidth,
+        Reference = source.Reference?.Clone()
     };
 }

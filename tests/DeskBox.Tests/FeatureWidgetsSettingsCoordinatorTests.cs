@@ -30,6 +30,7 @@ public sealed class FeatureWidgetsSettingsCoordinatorTests : IDisposable
         Assert.True(editor.SetMusicDisplayMode(SettingsService.MusicDisplayModeCover));
         Assert.True(editor.SetMusicUseArtworkBackdrop(false));
         Assert.True(editor.SetMusicEnableCoverHoverMotion(false));
+        Assert.True(editor.SetMusicHideTimelineWhenUnavailable(false));
         Assert.True(editor.SetAttachmentStorageMode(SettingsService.AttachmentStorageModeCopy));
         Assert.True(editor.SetManagedDropAction(SettingsService.ManagedDropActionFollowWindows));
         Assert.True(editor.SetFileWidgetFolderOpenBehavior(
@@ -39,13 +40,14 @@ public sealed class FeatureWidgetsSettingsCoordinatorTests : IDisposable
         Assert.Equal(SettingsService.MusicDisplayModeCover, music.MusicDisplayMode);
         Assert.False(music.MusicUseArtworkBackdrop);
         Assert.False(music.MusicEnableCoverHoverMotion);
+        Assert.False(music.MusicHideTimelineWhenUnavailable);
         Assert.Equal(SettingsService.AttachmentStorageModeCopy,
             settings.Settings.QuickCapture.AttachmentStorageMode);
         Assert.Equal(SettingsService.ManagedDropActionFollowWindows,
             settings.Settings.FileWidget.ManagedDropAction);
         Assert.Equal(FileWidgetFolderOpenBehaviorNames.Embedded,
             settings.Settings.FileWidget.FileWidgetFolderOpenBehavior);
-        Assert.Equal(6, notified);
+        Assert.Equal(7, notified);
 
         // Unchanged re-sends report no change and never schedule a second
         // debounced save, exactly like the page setters' SetProperty gate did
@@ -55,10 +57,11 @@ public sealed class FeatureWidgetsSettingsCoordinatorTests : IDisposable
         Assert.True(editor.SetMusicDisplayMode("Nonsense"));
         Assert.False(editor.SetMusicUseArtworkBackdrop(false));
         Assert.False(editor.SetMusicEnableCoverHoverMotion(false));
+        Assert.False(editor.SetMusicHideTimelineWhenUnavailable(false));
         Assert.True(editor.SetAttachmentStorageMode("Nonsense"));
         Assert.True(editor.SetManagedDropAction("Nonsense"));
         Assert.True(editor.SetFileWidgetFolderOpenBehavior("Nonsense"));
-        Assert.Equal(10, notified);
+        Assert.Equal(11, notified);
         // Invalid music mode falls back to Auto; invalid misc picks fall
         // back to Move / Link / Explorer, matching the page normalizers.
         Assert.Equal(SettingsService.MusicDisplayModeAuto, music.MusicDisplayMode);
@@ -169,6 +172,7 @@ public sealed class FeatureWidgetsSettingsCoordinatorTests : IDisposable
         coordinator.SetMusicDisplayMode(SettingsService.MusicDisplayModeControls);
         coordinator.SetMusicUseArtworkBackdrop(false);
         coordinator.SetMusicEnableCoverHoverMotion(false);
+        coordinator.SetMusicHideTimelineWhenUnavailable(false);
         coordinator.SetWeatherDataSource(SettingsService.WeatherDataSourceOpenMeteo);
         coordinator.SetWeatherAutoLocation(false);
         coordinator.TrySetWeatherManualLocation("Hanoi", 21.03, 105.85);
@@ -190,6 +194,7 @@ public sealed class FeatureWidgetsSettingsCoordinatorTests : IDisposable
         MusicSettingsSlice music = settings.Settings.Music;
         Assert.True(music.MusicUseArtworkBackdrop);
         Assert.True(music.MusicEnableCoverHoverMotion);
+        Assert.True(music.MusicHideTimelineWhenUnavailable);
         Assert.Equal(SettingsService.MusicDisplayModeAuto, music.MusicDisplayMode);
         WeatherSettingsSlice weather = settings.Settings.Weather;
         Assert.True(weather.WeatherAutoLocation);

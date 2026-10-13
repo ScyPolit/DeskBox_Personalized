@@ -192,7 +192,7 @@ public sealed class WidgetTopologyLayoutServiceTests
     }
 
     [Fact]
-    public void ReplacementMonitor_SeedsProportionallyInsideItsEffectiveWorkArea()
+    public void ReplacementMonitor_SeedCarriesTheUnscaledAuthoredReference()
     {
         var source = new WidgetSurfaceLayoutProfile
         {
@@ -220,13 +220,208 @@ public sealed class WidgetTopologyLayoutServiceTests
 
         Assert.Equal("external", mapped.PositionMonitorStableId);
         Assert.Equal(@"\\.\DISPLAY2", mapped.PositionMonitorDeviceName);
-        Assert.InRange(mapped.Width, 426, 428);
-        Assert.InRange(mapped.Height, 349, 351);
-        Assert.InRange(mapped.PositionMarginX, 70, 72);
-        Assert.InRange(mapped.PositionMarginY, 55, 57);
+        Assert.Equal(600, mapped.Width);
+        Assert.Equal(500, mapped.Height);
+        Assert.Equal(100, mapped.PositionMarginX);
+        Assert.Equal(80, mapped.PositionMarginY);
+        Assert.NotNull(mapped.Reference);
+        Assert.Equal(1920, mapped.Reference.FrameWidth);
+        Assert.Equal(1040, mapped.Reference.FrameHeight);
+        Assert.Equal(600, mapped.Reference.Width);
+        Assert.Equal(100, mapped.Reference.PositionMarginX);
         Assert.True(mapped.X >= 0 && mapped.Y >= 0);
         Assert.True(mapped.X + mapped.Width <= replacement.WorkAreaWidth + 1);
         Assert.True(mapped.Y + mapped.Height <= replacement.WorkAreaHeight + 1);
+    }
+
+    [Fact]
+    public void SameMonitorResolutionGrow_StretchesWidgetsKeepsSpacingAndRoundTripsExactly()
+    {
+        WidgetConfig left = CreateRowWidget("left", WidgetPositionAnchors.LeftTop, 24);
+        WidgetConfig middle = CreateRowWidget("middle", WidgetPositionAnchors.LeftTop, 640);
+        WidgetConfig right = CreateRowWidget("right", WidgetPositionAnchors.RightTop, 24);
+        var settings = new AppSettings { Widgets = [left, middle, right] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot hd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot uhd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1));
+        Assert.Equal(hd.Key, uhd.Key);
+
+        service.Activate(settings, hd);
+        service.Activate(settings, uhd);
+
+        double widthScale = (3840 - 120) / 1800.0;
+        double heightScale = (2080 - 40) / 1000.0;
+        Assert.All(new[] { left, middle, right }, widget =>
+        {
+            Assert.Equal(600 * widthScale, widget.Width, 6);
+            Assert.Equal(500 * heightScale, widget.Height, 6);
+            Assert.Equal(40, widget.PositionMarginY, 6);
+        });
+        Assert.Equal(24, left.PositionMarginX, 6);
+        Assert.Equal(24, right.PositionMarginX, 6);
+        Assert.Equal(16, middle.PositionMarginX - (left.PositionMarginX + left.Width), 6);
+        Assert.Equal(
+            56,
+            3840 - right.PositionMarginX - right.Width - (middle.PositionMarginX + middle.Width),
+            6);
+
+        service.Activate(settings, hd);
+
+        Assert.All(new[] { left, middle, right }, widget =>
+        {
+            Assert.Equal(600, widget.Width);
+            Assert.Equal(500, widget.Height);
+            Assert.Equal(40, widget.PositionMarginY);
+        });
+        Assert.Equal(24, left.PositionMarginX);
+        Assert.Equal(640, middle.PositionMarginX);
+        Assert.Equal(24, right.PositionMarginX);
+        Assert.Equal(1920 - 24 - 600, right.X);
+    }
+
+    [Fact]
+    public void SmallerRemoteDisplay_CompressesOpenAreaInsteadOfShrinkingWidgets()
+    {
+        WidgetConfig inner = CreateRowWidget("inner", WidgetPositionAnchors.RightTop, 440, width: 400, height: 300);
+        WidgetConfig outer = CreateRowWidget("outer", WidgetPositionAnchors.RightTop, 24, width: 400, height: 300);
+        var settings = new AppSettings { Widgets = [inner, outer] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot console = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1.5));
+        WidgetDisplayTopologySnapshot remote = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("rdp", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
+
+        service.Activate(settings, console);
+        service.Activate(settings, remote);
+
+        Assert.All(new[] { inner, outer }, widget =>
+        {
+            Assert.Equal(400, widget.Width, 6);
+            Assert.Equal(300, widget.Height, 6);
+            Assert.Equal(40, widget.PositionMarginY, 6);
+        });
+        Assert.Equal(24, outer.PositionMarginX, 6);
+        Assert.Equal(440, inner.PositionMarginX, 6);
+
+        service.Activate(settings, console);
+
+        Assert.Equal(400, inner.Width);
+        Assert.Equal(440, inner.PositionMarginX);
+        Assert.Equal(24, outer.PositionMarginX);
+    }
+
+    [Fact]
+    public void PlacementOnStretchedDisplay_IsStoredInTheReferenceFrame()
+    {
+        WidgetConfig widget = CreateRowWidget("solo", WidgetPositionAnchors.LeftTop, 24);
+        var settings = new AppSettings { Widgets = [widget] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot hd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot uhd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1));
+
+        service.Activate(settings, hd);
+        service.Activate(settings, uhd);
+        double widthScale = (3840 - 24) / (600.0 + 1296);
+        Assert.Equal(600 * widthScale, widget.Width, 6);
+
+        widget.Width = 1000;
+        service.Activate(settings, uhd);
+        Assert.Equal(1000, widget.Width);
+
+        service.Activate(settings, hd);
+
+        Assert.Equal(1000 / widthScale, widget.Width, 6);
+        Assert.Equal(24, widget.PositionMarginX, 6);
+    }
+
+    [Fact]
+    public void FixedContentWidget_GrowthIsCapped()
+    {
+        WidgetConfig weather = CreateRowWidget("weather", WidgetPositionAnchors.LeftTop, 24);
+        weather.WidgetKind = WidgetKind.Weather;
+        var settings = new AppSettings { Widgets = [weather] };
+        var service = new WidgetTopologyLayoutService();
+
+        service.Activate(settings, WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1)));
+        service.Activate(settings, WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1)));
+
+        Assert.Equal(900, weather.Width, 6);
+        Assert.Equal(750, weather.Height, 6);
+        Assert.Equal(24, weather.PositionMarginX, 6);
+    }
+
+    [Fact]
+    public void CapsulePlacement_FollowsTheElasticMapWithoutChangingItsAnchor()
+    {
+        WidgetConfig widget = CreateRowWidget("capsule", WidgetPositionAnchors.LeftTop, 24);
+        widget.CompactPlacement = new WidgetCompactPlacement
+        {
+            PositionAnchor = WidgetPositionAnchors.LeftTop,
+            PositionMarginX = 24,
+            PositionMarginY = 700,
+            PositionMonitorDeviceName = @"\\.\DISPLAY1",
+            PositionMonitorWasPrimary = true
+        };
+        var settings = new AppSettings { Widgets = [widget] };
+        var service = new WidgetTopologyLayoutService();
+
+        service.Activate(settings, WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1)));
+        service.Activate(settings, WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1)));
+
+        double heightScale = (2080 - 40) / 1000.0;
+        Assert.NotNull(widget.CompactPlacement);
+        Assert.Equal(WidgetPositionAnchors.LeftTop, widget.CompactPlacement.PositionAnchor);
+        Assert.Equal(24, widget.CompactPlacement.PositionMarginX, 6);
+        Assert.Equal(40 + 500 * heightScale + (700 - 540) * heightScale, widget.CompactPlacement.PositionMarginY, 6);
+    }
+
+    [Fact]
+    public void UpgradeProfile_DerivesReferencesAndDropsSeededEntriesOfInactiveProfiles()
+    {
+        WidgetSurfaceLayoutProfile Entry(bool? authoritative) => new()
+        {
+            PositionMonitorStableId = "panel",
+            PositionMonitorDeviceName = @"\\.\DISPLAY1",
+            PositionAnchor = WidgetPositionAnchors.LeftTop,
+            PositionMarginX = 24,
+            PositionMarginY = 40,
+            Width = 600,
+            Height = 500,
+            IsAuthoritative = authoritative
+        };
+        WidgetTopologyLayoutProfile Profile() => new()
+        {
+            Version = 1,
+            Monitors = [Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 2)],
+            Surfaces = new Dictionary<string, WidgetSurfaceLayoutProfile>
+            {
+                ["authored"] = Entry(true),
+                ["seeded"] = Entry(false)
+            }
+        };
+        WidgetTopologyLayoutProfile active = Profile();
+        WidgetTopologyLayoutProfile inactive = Profile();
+
+        Assert.True(WidgetTopologyLayoutService.UpgradeProfile("active", active, "active"));
+        Assert.True(WidgetTopologyLayoutService.UpgradeProfile("inactive", inactive, "active"));
+        Assert.False(WidgetTopologyLayoutService.UpgradeProfile("inactive", inactive, "active"));
+
+        Assert.Equal(2, active.Surfaces.Count);
+        Assert.Equal(new[] { "authored" }, inactive.Surfaces.Keys);
+        WidgetSurfaceLayoutReference? reference = inactive.Surfaces["authored"].Reference;
+        Assert.NotNull(reference);
+        Assert.Equal(1920, reference.FrameWidth);
+        Assert.Equal(1040, reference.FrameHeight);
+        Assert.Equal(600, reference.Width);
+        Assert.Equal(WidgetTopologyLayoutProfile.CurrentVersion, inactive.Version);
     }
 
     [Fact]
@@ -444,11 +639,11 @@ public sealed class WidgetTopologyLayoutServiceTests
 
         Assert.Equal(qhd.Key, settings.ActiveWidgetTopologyKey);
         Assert.Equal(2, settings.WidgetTopologyLayouts.Count);
-        Assert.Equal(44, widget.PositionMarginX);
-        Assert.Equal(36, widget.PositionMarginY);
+        Assert.Equal(44, widget.PositionMarginX, 6);
+        Assert.Equal(36, widget.PositionMarginY, 6);
         Assert.Equal(WidgetPositionAnchors.LeftTop, widget.PositionAnchor);
-        Assert.Equal(720, widget.Width);
-        Assert.Equal(620, widget.Height);
+        Assert.Equal(720 * (2560 - 44) / (720.0 + 1156), widget.Width, 6);
+        Assert.Equal(620 * (1440 - 36) / (620.0 + 424), widget.Height, 6);
         Assert.Equal(44, widget.X);
         Assert.Equal(36, widget.Y);
     }
@@ -488,11 +683,11 @@ public sealed class WidgetTopologyLayoutServiceTests
         Assert.Equal(dualQhd.Key, settings.ActiveWidgetTopologyKey);
         Assert.Equal(2, settings.WidgetTopologyLayouts.Count);
         // The external-monitor placement survives the resolution change.
-        Assert.Equal(220, widget.PositionMarginX);
-        Assert.Equal(120, widget.PositionMarginY);
+        Assert.Equal(220 * 4 / 3.0, widget.PositionMarginX, 6);
+        Assert.Equal(120 * 4 / 3.0, widget.PositionMarginY, 6);
         Assert.Equal(WidgetPositionAnchors.LeftTop, widget.PositionAnchor);
-        Assert.Equal(720, widget.Width);
-        Assert.Equal(600, widget.Height);
+        Assert.Equal(960, widget.Width, 6);
+        Assert.Equal(800, widget.Height, 6);
         Assert.Equal(@"\\.\DISPLAY2", widget.PositionMonitorDeviceName);
     }
 
@@ -528,6 +723,301 @@ public sealed class WidgetTopologyLayoutServiceTests
         Assert.Equal(80, widget.PositionMarginY);
     }
 
+    [Fact]
+    public void SevereShrinkBeyondPreferredFloor_KeepsWidgetsDisjointWithinWorkArea()
+    {
+        // Full-width 4K 3-column grid onto a 1366 remote display: even the
+        // preferred 0.5 floor cannot fit, so widgets keep shrinking below it
+        // until the axis exactly fills — butt-joined, never overlapping.
+        double column = (3840 - 80) / 3.0;
+        WidgetConfig left = CreateRowWidget("left", WidgetPositionAnchors.LeftTop, 24, width: column);
+        WidgetConfig middle = CreateRowWidget("middle", WidgetPositionAnchors.LeftTop, 40 + column, width: column);
+        WidgetConfig right = CreateRowWidget("right", WidgetPositionAnchors.RightTop, 24, width: column);
+        var settings = new AppSettings { Widgets = [left, middle, right] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot uhd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1));
+        WidgetDisplayTopologySnapshot small = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1366, 728, 1));
+        Assert.Equal(uhd.Key, small.Key);
+
+        service.Activate(settings, uhd);
+        service.Activate(settings, small);
+
+        Assert.All(new[] { left, middle, right }, widget =>
+        {
+            Assert.Equal(1366 / 3.0, widget.Width, 4);
+            Assert.Equal(500, widget.Height, 6);
+            Assert.Equal(40, widget.PositionMarginY, 6);
+        });
+        Assert.Equal(0, left.PositionMarginX, 6);
+        Assert.Equal(1366 / 3.0, middle.PositionMarginX, 4);
+        Assert.Equal(0, right.PositionMarginX, 6);
+        double leftRight = left.PositionMarginX + left.Width;
+        double middleRight = middle.PositionMarginX + middle.Width;
+        double rightLeft = 1366 - right.PositionMarginX - right.Width;
+        Assert.True(leftRight <= middle.PositionMarginX + 1e-6);
+        Assert.True(middleRight <= rightLeft + 1e-6);
+    }
+
+    [Fact]
+    public void PureDpiFlip_SameKey_ReflowsAndRoundTrips()
+    {
+        WidgetConfig left = CreateRowWidget("left", WidgetPositionAnchors.LeftTop, 24);
+        WidgetConfig right = CreateRowWidget("right", WidgetPositionAnchors.RightTop, 24);
+        var settings = new AppSettings { Widgets = [left, right] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot dpi1 = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot dpi15 = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1.5));
+        Assert.Equal(dpi1.Key, dpi15.Key);
+
+        service.Activate(settings, dpi1);
+        service.Activate(settings, dpi15);
+
+        // Effective width 1920 -> 1280: open gap compresses to the threshold,
+        // widgets shrink just past it, spacing margins stay literal.
+        double shrunkWidth = 600 * (1168 / 1200.0);
+        Assert.Equal(shrunkWidth, left.Width, 6);
+        Assert.Equal(shrunkWidth, right.Width, 6);
+        Assert.Equal(24, left.PositionMarginX, 6);
+        Assert.Equal(24, right.PositionMarginX, 6);
+        Assert.Equal(64, 1280 - right.PositionMarginX - right.Width - (left.PositionMarginX + left.Width), 6);
+        Assert.Equal(500, left.Height, 6);
+        Assert.Equal(40, left.PositionMarginY, 6);
+
+        service.Activate(settings, dpi1);
+
+        Assert.Equal(600, left.Width);
+        Assert.Equal(500, left.Height);
+        Assert.Equal(24, left.PositionMarginX);
+        Assert.Equal(40, left.PositionMarginY);
+        Assert.Equal(600, right.Width);
+        Assert.Equal(24, right.PositionMarginX);
+    }
+
+    [Fact]
+    public void MixedResolutionMonitors_EachGetsItsOwnPlan()
+    {
+        WidgetConfig onPanel = CreateRowWidget("panel-widget", WidgetPositionAnchors.LeftTop, 24);
+        onPanel.PositionMonitorKey = "0:0:1920:1040";
+        WidgetConfig onExternal = CreateRowWidget("ext-widget", WidgetPositionAnchors.LeftTop, 24);
+        onExternal.PositionMonitorDeviceName = @"\\.\DISPLAY2";
+        onExternal.PositionMonitorWasPrimary = false;
+        onExternal.PositionMonitorKey = "1920:0:1920:1040";
+        var settings = new AppSettings { Widgets = [onPanel, onExternal] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot dualHd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1),
+            Monitor("external", @"\\.\DISPLAY2", false, 1920, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot dualMixed = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 2560, 1360, 1),
+            Monitor("external", @"\\.\DISPLAY2", false, 2560, 0, 1280, 640, 1));
+        Assert.Equal(dualHd.Key, dualMixed.Key);
+
+        service.Activate(settings, dualHd);
+        service.Activate(settings, dualMixed);
+
+        // Panel grows 1920 -> 2560 (widgets stretch with its open area);
+        // external shrinks 1920 -> 1280 (open area absorbs it, widgets keep
+        // their DIP size). A shared plan would scale both identically.
+        Assert.Equal(600 * (2536 / 1896.0), onPanel.Width, 6);
+        Assert.Equal(500 * (1320 / 1000.0), onPanel.Height, 6);
+        Assert.Equal(600, onExternal.Width, 6);
+        Assert.Equal(500, onExternal.Height, 6);
+        Assert.Equal(24, onPanel.PositionMarginX, 6);
+        Assert.Equal(24, onExternal.PositionMarginX, 6);
+    }
+
+    [Fact]
+    public void SevereShrinkWithNarrowWidget_NeverClampsIntoNeighbours()
+    {
+        // 1920 @ 100% full row (896 / 100 / 844, gaps 16, margins 24) onto
+        // the same panel at 250% scale (effective width 768): the narrow
+        // widget projects to 41.74 DIP, below the preferred 50 minimum. The
+        // adaptive minimum keeps the projection clamp from inflating it into
+        // its right neighbour (spec 5.2 rule 4).
+        WidgetConfig left = CreateRowWidget("left", WidgetPositionAnchors.LeftTop, 24, width: 896);
+        WidgetConfig narrow = CreateRowWidget("narrow", WidgetPositionAnchors.LeftTop, 24 + 896 + 16, width: 100);
+        WidgetConfig right = CreateRowWidget("right", WidgetPositionAnchors.RightTop, 24, width: 844);
+        var settings = new AppSettings { Widgets = [left, narrow, right] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot scale100 = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot scale250 = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 2.5));
+        Assert.Equal(scale100.Key, scale250.Key);
+
+        service.Activate(settings, scale100);
+        service.Activate(settings, scale250);
+
+        double scale = 768 / 1840.0;
+        Assert.Equal(896 * scale, left.Width, 4);
+        Assert.Equal(100 * scale, narrow.Width, 4);
+        Assert.Equal(844 * scale, right.Width, 4);
+        Assert.Equal(0, left.PositionMarginX, 6);
+        Assert.Equal(left.Width, narrow.PositionMarginX, 4);
+        double narrowRight = narrow.PositionMarginX + narrow.Width;
+        double rightLeft = 768 - right.PositionMarginX - right.Width;
+        Assert.True(narrowRight <= rightLeft + 1e-6);
+    }
+
+    [Fact]
+    public void SevereShrinkNarrowPairOnProjector_StayDisjointBelowPreferredMinimum()
+    {
+        // 4K full row [1772, 100, 100, 1772] onto a 1366 projector: the two
+        // narrow widgets project to 36.49 DIP each and must stay disjoint.
+        WidgetConfig a = CreateRowWidget("a", WidgetPositionAnchors.LeftTop, 24, width: 1772);
+        WidgetConfig b = CreateRowWidget("b", WidgetPositionAnchors.LeftTop, 24 + 1772 + 16, width: 100);
+        WidgetConfig c = CreateRowWidget("c", WidgetPositionAnchors.LeftTop, 24 + 1772 + 16 + 100 + 16, width: 100);
+        WidgetConfig d = CreateRowWidget("d", WidgetPositionAnchors.RightTop, 24, width: 1772);
+        var settings = new AppSettings { Widgets = [a, b, c, d] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot uhd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1));
+        WidgetDisplayTopologySnapshot small = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1366, 728, 1));
+        Assert.Equal(uhd.Key, small.Key);
+
+        service.Activate(settings, uhd);
+        service.Activate(settings, small);
+
+        double scale = 1366 / 3744.0;
+        Assert.Equal(100 * scale, b.Width, 4);
+        Assert.Equal(100 * scale, c.Width, 4);
+        Assert.True(
+            b.PositionMarginX + b.Width <= c.PositionMarginX + 1e-6,
+            "narrow pair must stay disjoint");
+        double cRight = c.PositionMarginX + c.Width;
+        double dLeft = 1366 - d.PositionMarginX - d.Width;
+        Assert.True(cRight <= dLeft + 1e-6, "narrow pair must not clamp into the right column");
+    }
+
+    [Fact]
+    public void DegenerateTinyWorkArea_TwoWidgetsStayDisjoint()
+    {
+        // Terminal state (spec 5.2 step 4 tail): a 40-DIP work area cannot
+        // fit two 50-DIP widgets even fully shrunk; the adaptive minimum
+        // follows the plan down so the clamp never stacks them.
+        WidgetConfig first = CreateRowWidget("first", WidgetPositionAnchors.LeftTop, 0, width: 50);
+        WidgetConfig second = CreateRowWidget("second", WidgetPositionAnchors.LeftTop, 50, width: 50);
+        var settings = new AppSettings { Widgets = [first, second] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot wide = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1920, 1040, 1));
+        WidgetDisplayTopologySnapshot tiny = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 40, 728, 1));
+        Assert.Equal(wide.Key, tiny.Key);
+
+        service.Activate(settings, wide);
+        service.Activate(settings, tiny);
+
+        Assert.Equal(20, first.Width, 4);
+        Assert.Equal(20, second.Width, 4);
+        Assert.Equal(0, first.PositionMarginX, 4);
+        Assert.Equal(20, second.PositionMarginX, 4);
+    }
+
+    [Fact]
+    public void QuantizedRoundTripThroughSevereState_PreservesAuthoredMargins()
+    {
+        // Window creation quantizes the projected geometry to whole pixels
+        // (455.33 -> 455). Flipping back to the reference frame must treat
+        // that noise as "unchanged" and keep the authored margins instead of
+        // inverting the compressed (zero-spacing) geometry into the
+        // reference frame.
+        double column = (3840 - 80) / 3.0;
+        WidgetConfig left = CreateRowWidget("left", WidgetPositionAnchors.LeftTop, 24, width: column);
+        WidgetConfig middle = CreateRowWidget("middle", WidgetPositionAnchors.LeftTop, 40 + column, width: column);
+        WidgetConfig right = CreateRowWidget("right", WidgetPositionAnchors.RightTop, 24, width: column);
+        var settings = new AppSettings { Widgets = [left, middle, right] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot uhd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1));
+        WidgetDisplayTopologySnapshot small = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1366, 728, 1));
+        Assert.Equal(uhd.Key, small.Key);
+
+        service.Activate(settings, uhd);
+        service.Activate(settings, small);
+
+        // Simulate the whole-pixel quantization window creation writes back.
+        left.Width = Math.Floor(left.Width);
+        middle.Width = Math.Floor(middle.Width);
+        right.Width = Math.Floor(right.Width);
+        middle.PositionMarginX = Math.Floor(middle.PositionMarginX);
+
+        service.Activate(settings, uhd);
+
+        Assert.Equal(24, left.PositionMarginX, 6);
+        Assert.Equal(40 + column, middle.PositionMarginX, 6);
+        Assert.Equal(24, right.PositionMarginX, 6);
+        Assert.Equal(column, left.Width, 4);
+        Assert.Equal(column, middle.Width, 4);
+        Assert.Equal(column, right.Width, 4);
+    }
+
+    [Fact]
+    public void SubDipEditInSevereState_IsAbsorbedByCaptureTolerance()
+    {
+        // A sub-DIP nudge is below the capture tolerance: treated as noise,
+        // the authored reference survives the round trip unchanged.
+        double column = (3840 - 80) / 3.0;
+        WidgetConfig left = CreateRowWidget("left", WidgetPositionAnchors.LeftTop, 24, width: column);
+        WidgetConfig middle = CreateRowWidget("middle", WidgetPositionAnchors.LeftTop, 40 + column, width: column);
+        WidgetConfig right = CreateRowWidget("right", WidgetPositionAnchors.RightTop, 24, width: column);
+        var settings = new AppSettings { Widgets = [left, middle, right] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot uhd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1));
+        WidgetDisplayTopologySnapshot small = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1366, 728, 1));
+
+        service.Activate(settings, uhd);
+        service.Activate(settings, small);
+
+        middle.PositionMarginX += 0.5;
+
+        service.Activate(settings, uhd);
+
+        Assert.Equal(24, left.PositionMarginX, 6);
+        Assert.Equal(40 + column, middle.PositionMarginX, 6);
+        Assert.Equal(24, right.PositionMarginX, 6);
+        Assert.Equal(column, middle.Width, 4);
+    }
+
+    [Fact]
+    public void MeaningfulEditInSevereState_InvertsThroughTheCompressedPlan()
+    {
+        // Drags of >= 1 DIP re-capture through the inversion: the margin
+        // comes back amplified by 1/ws (compressed-plan semantics, spec 5.2
+        // capture trade-off #2) while unedited surfaces restore exactly.
+        double column = (3840 - 80) / 3.0;
+        WidgetConfig left = CreateRowWidget("left", WidgetPositionAnchors.LeftTop, 24, width: column);
+        WidgetConfig middle = CreateRowWidget("middle", WidgetPositionAnchors.LeftTop, 40 + column, width: column);
+        WidgetConfig right = CreateRowWidget("right", WidgetPositionAnchors.RightTop, 24, width: column);
+        var settings = new AppSettings { Widgets = [left, middle, right] };
+        var service = new WidgetTopologyLayoutService();
+        WidgetDisplayTopologySnapshot uhd = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 3840, 2080, 1));
+        WidgetDisplayTopologySnapshot small = WidgetTopologyLayoutService.CreateSnapshotForTest(
+            Monitor("panel", @"\\.\DISPLAY1", true, 0, 0, 1366, 728, 1));
+
+        service.Activate(settings, uhd);
+        service.Activate(settings, small);
+
+        const double drag = 40;
+        middle.PositionMarginX += drag;
+
+        service.Activate(settings, uhd);
+
+        double ws = 1366 / 3760.0;
+        Assert.Equal(40 + column + drag / ws, middle.PositionMarginX, 2);
+        Assert.Equal(24, left.PositionMarginX, 6);
+        Assert.Equal(24, right.PositionMarginX, 6);
+    }
+
     private static WidgetConfig CreateWidget() => new()
     {
         Id = "widget-1",
@@ -542,6 +1032,24 @@ public sealed class WidgetTopologyLayoutServiceTests
         PositionMonitorDeviceName = @"\\.\DISPLAY1",
         PositionMonitorWasPrimary = true,
         PositionMonitorKey = "0:0:3840:2080"
+    };
+
+    private static WidgetConfig CreateRowWidget(
+        string id,
+        string anchor,
+        double marginX,
+        double width = 600,
+        double height = 500) => new()
+    {
+        Id = id,
+        Width = width,
+        Height = height,
+        BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion,
+        PositionAnchor = anchor,
+        PositionMarginX = marginX,
+        PositionMarginY = 40,
+        PositionMonitorDeviceName = @"\\.\DISPLAY1",
+        PositionMonitorWasPrimary = true
     };
 
     private static void PlaceOnExternalMonitor(WidgetConfig widget, string deviceName)

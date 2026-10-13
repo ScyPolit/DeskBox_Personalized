@@ -208,6 +208,8 @@ public sealed class BackupSettingsSurfaceTests
         Assert.Equal("[Settings.CloudBackup.TestConnection.Failed:offline]", editor.ConnectionStatusText);
         editor.SetSurfaceMessageForTest(new(BackupPageMessageKind.PasswordMissing));
         Assert.Equal("[Settings.CloudBackup.Password.NotSaved]", editor.ConnectionStatusText);
+        editor.SetSurfaceMessageForTest(new(BackupPageMessageKind.PasswordEmpty));
+        Assert.Equal("[Settings.CloudBackup.Password.EmptyBody]", editor.ConnectionStatusText);
         editor.SetSurfaceMessageForTest(BackupPageMessage.Empty);
         Assert.Equal(string.Empty, editor.ConnectionStatusText);
     }

@@ -5732,10 +5732,7 @@ public sealed partial class WidgetShell : UserControl
 
     private static void SetProtectedCursor(UIElement element, InputSystemCursorShape shape)
     {
-        var property = typeof(UIElement).GetProperty(
-            "ProtectedCursor",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        property?.SetValue(element, InputSystemCursor.Create(shape));
+        UiElementCursorHelper.SetCursor(element, shape);
     }
 
     private static bool IsWithin(DependencyObject source, DependencyObject target)

@@ -390,13 +390,21 @@ public sealed class FileSettingsEditorTests : IDisposable
         Assert.Contains("controls:SettingsComboBox.Value=\"{Binding DragOutAction, Mode=TwoWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsOn=\"{Binding DragOutModifierTipEnabled, Mode=TwoWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsOn=\"{Binding DragOutResultHintEnabled, Mode=TwoWay}\"", xaml, StringComparison.Ordinal);
-        // The Windows 10 note and the modifier-tip toggle are named elements:
-        // the shell greys the toggle and reveals the note only on Win10,
+        // The drag-out card is named so the shell can append the Windows 10
+        // note to its description: the content column is an Auto grid column,
+        // and a wide note placed there overflows the card on high-scale
+        // narrow windows instead of wrapping. The note text itself lives in
+        // SettingsWindow.StorageAndUpdates.cs (description concatenation),
+        // never as an element inside the content column. The modifier-tip
+        // toggle stays a named element: the shell greys it out on Win10,
         // where external drops cannot carry a two-effect advertisement.
-        Assert.Contains("x:Name=\"DragOutWin10Note\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DragOutActionCard\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("DragOutWin10Note", xaml, StringComparison.Ordinal);
+        string shellStorage = File.ReadAllText(
+            TestPaths.FromRepository("src/DeskBox/Views/SettingsWindow.StorageAndUpdates.cs"));
         Assert.Contains(
-            "svc:Localized.Key=\"Settings.DragOutAction.Win10Note\"",
-            xaml,
+            "\"Settings.DragOutAction.Win10Note\"",
+            shellStorage,
             StringComparison.Ordinal);
         Assert.Contains(
             "x:Name=\"DragOutModifierTipToggle\"",

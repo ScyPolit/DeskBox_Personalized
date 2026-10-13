@@ -1,3 +1,4 @@
+using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
@@ -19,6 +20,20 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
     {
         InitializeComponent();
         Loaded += (_, _) => Refresh();
+        // Code-built rows snapshot their themed brushes at build time, and
+        // the theme picker lives in this same window: re-run the row
+        // builders when the applied theme flips so they follow along like
+        // XAML ThemeResources do.
+        ActualThemeChanged += (_, _) =>
+        {
+            RefreshWidgetCards();
+            BuildTypeOverview();
+            if (RuleDetailPanel.Visibility == Visibility.Visible)
+            {
+                BuildCategoryChecks();
+                BuildSubtypeChecks();
+            }
+        };
     }
 
     public void Refresh()
@@ -71,6 +86,15 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
         BuildTypeOverview();
     }
 
+    /// <summary>
+    /// Application-scope themed lookups follow the system theme, which
+    /// inverts whenever the app's theme override disagrees with it;
+    /// resolve against this section's window-scoped theme instead.
+    /// </summary>
+    private Microsoft.UI.Xaml.Media.Brush SecondaryTextBrush() =>
+        NeutralInteractionBrush.ResolveThemedResource("TextFillColorSecondaryBrush", this) ??
+        new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x9E, 0x9E, 0x9E));
+
     private void RefreshWidgetCards()
     {
         WidgetRuleCards.Children.Clear();
@@ -97,17 +121,10 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
             {
                 Tag = widget.Id,
                 IsClickEnabled = true,
-                HorizontalContentAlignment = HorizontalAlignment.Right,
                 Header = widget.Name,
                 Description = BuildRuleSummary(rule)
             };
             card.HeaderIcon = new FontIcon { Glyph = "\uE8B7" };
-            card.Content = new FontIcon
-            {
-                Glyph = "\uE76C",
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center
-            };
             card.Click += WidgetRuleButton_Click;
             WidgetRuleCards.Children.Add(card);
         }
@@ -118,7 +135,7 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
             {
                 Text = T("DesktopOrganization.Rules.Empty"),
                 Margin = new Thickness(8, 12, 8, 4),
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                Foreground = SecondaryTextBrush()
             });
         }
     }
@@ -339,7 +356,10 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
 
     private void WidgetRuleButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: string widgetId })
+        // The row is a toolkit SettingsCard, whose Click event delivers the
+        // card itself as sender — matching on Button silently swallowed every
+        // invocation after the v3.1 row conversion.
+        if (sender is not CommunityToolkit.WinUI.Controls.SettingsCard { Tag: string widgetId })
         {
             return;
         }
@@ -589,7 +609,7 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
         RefreshStatusOnly();
     }
 
-    private static FrameworkElement CreateFileTypeOptionContent(
+    private FrameworkElement CreateFileTypeOptionContent(
         string title,
         IReadOnlyList<string> extensions,
         string? emptyDescription = null)
@@ -610,8 +630,7 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
                 ? string.Join("  ·  ", extensions)
                 : emptyDescription ?? string.Empty,
             FontSize = 12,
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
-                "TextFillColorSecondaryBrush"],
+            Foreground = SecondaryTextBrush(),
             TextWrapping = TextWrapping.Wrap,
             MaxWidth = 520
         });
@@ -865,7 +884,7 @@ public sealed partial class DesktopOrganizationSettingsSection : UserControl
             var target = new TextBlock
             {
                 Text = widget?.Name ?? T("DesktopOrganization.Rules.KeepOnDesktop"),
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                Foreground = SecondaryTextBrush()
             };
             Grid.SetColumn(target, 1);
             grid.Children.Add(target);

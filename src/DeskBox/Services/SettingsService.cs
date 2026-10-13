@@ -619,6 +619,7 @@ public const int DefaultSearchMaxResults = 100;
         settings.MusicUseArtworkBackdrop = true;
         settings.MusicEnableCoverHoverMotion = true;
         settings.MusicDisplayMode = MusicDisplayModeAuto;
+        settings.MusicHideTimelineWhenUnavailable = true;
 settings.WeatherAutoLocation = true;
 settings.WeatherCityName = string.Empty;
 settings.WeatherLatitude = 0;
@@ -1522,10 +1523,11 @@ settings.FocusClickedWidgetOnRaise = false;
             changed |= settings.WidgetTopologyLayouts.Remove(invalidKey);
         }
 
-        foreach (WidgetTopologyLayoutProfile profile in settings.WidgetTopologyLayouts.Values)
+        foreach ((string key, WidgetTopologyLayoutProfile profile) in settings.WidgetTopologyLayouts)
         {
             if (profile.Version != WidgetTopologyLayoutProfile.CurrentVersion)
             {
+                WidgetTopologyLayoutService.UpgradeProfile(key, profile, settings.WidgetLayout.ActiveWidgetTopologyKey);
                 profile.Version = WidgetTopologyLayoutProfile.CurrentVersion;
                 changed = true;
             }

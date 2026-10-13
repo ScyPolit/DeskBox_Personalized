@@ -3026,8 +3026,11 @@ public sealed partial class WidgetManager
 
     private void NormalizeWidgetBounds(WidgetConfig config)
     {
-        int width = (int)Math.Round(Math.Max(SettingsService.MinWidgetWidth, config.Width));
-        int height = (int)Math.Round(Math.Max(SettingsService.MinWidgetHeight, config.Height));
+        // Elastic projection may legitimately size a widget below the
+        // preferred minimum under extreme shrink; re-clamping to it here
+        // would push the widget over its neighbours on the work area.
+        int width = (int)Math.Round(Math.Max(WidgetElasticLayout.AbsoluteMinWidgetSizeDips, config.Width));
+        int height = (int)Math.Round(Math.Max(WidgetElasticLayout.AbsoluteMinWidgetSizeDips, config.Height));
         int x = (int)Math.Round(config.X);
         int y = (int)Math.Round(config.Y);
         double previousX = config.X;

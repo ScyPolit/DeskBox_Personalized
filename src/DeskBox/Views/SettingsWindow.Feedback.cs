@@ -55,6 +55,8 @@ public sealed partial class SettingsWindow
             Padding = new Thickness(10, 8, 10, 8),
             CornerRadius = new CornerRadius(6),
             BorderThickness = new Thickness(1),
+            Background = TryThemeBrush("CardBackgroundFillColorSecondaryBrush"),
+            BorderBrush = TryThemeBrush("CardStrokeColorDefaultBrush"),
             Child = noticeText,
         };
 
@@ -505,6 +507,8 @@ public sealed partial class SettingsWindow
                 Padding = new Thickness(10, 8, 10, 8),
                 CornerRadius = new CornerRadius(6),
                 BorderThickness = new Thickness(1),
+                Background = TryThemeBrush("CardBackgroundFillColorSecondaryBrush"),
+                BorderBrush = TryThemeBrush("CardStrokeColorDefaultBrush"),
                 Margin = new Thickness(0, 4, 0, 0),
                 Child = new StackPanel(),
             };
@@ -532,6 +536,19 @@ public sealed partial class SettingsWindow
     private static Brush? TryAccentBrush()
     {
         if (Application.Current?.Resources.TryGetValue("AccentTextFillColorPrimaryBrush", out object brush) == true)
+        {
+            return brush as Brush;
+        }
+
+        return null;
+    }
+
+    // Same lookups as the nested snapshot rows in SettingsWindow.xaml: the
+    // notice/reply borders were declared with thickness+radius but no brushes,
+    // so they never actually rendered a box.
+    private static Brush? TryThemeBrush(string key)
+    {
+        if (Application.Current?.Resources.TryGetValue(key, out object brush) == true)
         {
             return brush as Brush;
         }

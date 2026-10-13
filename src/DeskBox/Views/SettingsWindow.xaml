@@ -537,9 +537,9 @@ Text="DeskBox" />
                                             svc:Localized.HeaderKey="Settings.WidgetBackground.PerWidget.Title">
                                             <Button
                                                 Click="ClearPerWidgetBackgroundsButton_Click"
-                                                Style="{StaticResource ActionButtonStyle}">
+                                                Style="{StaticResource DangerActionButtonStyle}">
                                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <FontIcon Glyph="&#xE74D;" FontSize="16" />
+                                                    <FontIcon Glyph="&#xE74D;" FontSize="16" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
                                                     <TextBlock svc:Localized.Key="Settings.WidgetBackground.PerWidget.Clear" />
                                                 </StackPanel>
                                             </Button>
@@ -1101,7 +1101,7 @@ Text="DeskBox" />
                                                 </Button>
                                                 <Button
                                                     Click="DissolveWidgetGroupButton_Click"
-                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Style="{StaticResource DangerActionButtonStyle}"
                                                     Tag="{Binding FirstMemberId}">
                                                     <TextBlock svc:Localized.Key="Widget.Group.Dissolve" />
                                                 </Button>
@@ -1262,26 +1262,17 @@ Text="DeskBox" />
                             </toolkit:SettingsExpander.HeaderIcon>
                             <toolkit:SettingsExpander.Items>
                                 <toolkit:SettingsCard
+                                    x:Name="DragOutActionCard"
                                     HorizontalContentAlignment="Right"
                                     svc:Localized.DescriptionKey="Settings.DragOutAction.Description"
                                     svc:Localized.HeaderKey="Settings.DragOutAction.Title"
                                     svc:InfoTip.TitleKey="Settings.DragOutAction.InfoTip.Title"
                                     svc:InfoTip.BodyKey="Settings.DragOutAction.InfoTip.Description">
-                                    <StackPanel Spacing="4">
-                                        <ComboBox svc:Localized.AutomationNameKey="Settings.DragOutAction.Title"
-                                            MinWidth="{StaticResource SettingsControlMinWidth}"
-                                            HorizontalAlignment="Right"
-                                            ItemsSource="{Binding AvailableDragOutActionOptions}"
-                                            controls:SettingsComboBox.Value="{Binding DragOutAction, Mode=TwoWay}" />
-                                        <TextBlock
-                                            x:Name="DragOutWin10Note"
-                                            Style="{StaticResource SettingDescriptionTextStyle}"
-                                            TextWrapping="Wrap"
-                                            HorizontalAlignment="Right"
-                                            TextAlignment="Right"
-                                            Visibility="Collapsed"
-                                            svc:Localized.Key="Settings.DragOutAction.Win10Note" />
-                                    </StackPanel>
+                                    <ComboBox svc:Localized.AutomationNameKey="Settings.DragOutAction.Title"
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        HorizontalAlignment="Right"
+                                        ItemsSource="{Binding AvailableDragOutActionOptions}"
+                                        controls:SettingsComboBox.Value="{Binding DragOutAction, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
@@ -1313,6 +1304,7 @@ Text="DeskBox" />
                         </toolkit:SettingsExpander>
 
                         <toolkit:SettingsCard
+                            x:Name="ManagedStorageDesktopShortcutCard"
                             HorizontalContentAlignment="Right"
                             svc:Localized.DescriptionKey="Settings.ManagedPath.DesktopShortcut.Description"
                             svc:Localized.HeaderKey="Settings.ManagedPath.DesktopShortcut.Title"
@@ -1338,29 +1330,47 @@ Text="DeskBox" />
                     Style="{StaticResource SectionPanelStyle}">
                     <StackPanel Margin="0,8,0,0" Spacing="4">
                         <toolkit:SettingsExpander
-                            svc:Localized.DescriptionKey="Settings.FileStacks.Description"
-                            svc:Localized.HeaderKey="Settings.FileStacks.Enable.Title"
-                            svc:InfoTip.TitleKey="Settings.FileStacks.InfoTip.Title"
-                            svc:InfoTip.BodyKey="Settings.FileStacks.InfoTip.Description">
-                            <toolkit:SettingsExpander.HeaderIcon>
-                                <FontIcon Glyph="&#xE81E;" />
-                            </toolkit:SettingsExpander.HeaderIcon>
-                            <ToggleSwitch svc:Localized.AutomationNameKey="Settings.FileStacks.Enable.Title"  OnContent="" OffContent="" MinWidth="0" IsOn="{Binding StacksEnabled, Mode=TwoWay}" />
+                            svc:Localized.DescriptionKey="Settings.FileStacks.OpenMode.Description"
+                            svc:Localized.HeaderKey="Settings.FileStacks.OpenMode.Title">
+                            <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.OpenMode.Title"
+                                MinWidth="{StaticResource SettingsControlMinWidth}"
+                                ItemsSource="{x:Bind AvailableOpenModeOptions, Mode=OneWay}"
+                                controls:SettingsComboBox.Value="{x:Bind OpenMode, Mode=TwoWay}" />
                             <toolkit:SettingsExpander.Items>
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding StacksEnabled}"
-                                    svc:Localized.DescriptionKey="Settings.FileStacks.Auto.Description"
-                                    svc:Localized.HeaderKey="Settings.FileStacks.Auto.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE8B7;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
-                                    <ToggleSwitch svc:Localized.AutomationNameKey="Settings.FileStacks.Auto.Title"  OnContent="" OffContent="" MinWidth="0" IsOn="{Binding AutoStacking, Mode=TwoWay}" />
+                                    IsEnabled="{Binding IsPopoverOpenMode}"
+                                    svc:Localized.DescriptionKey="Settings.FileStacks.PopoverLayout.Description"
+                                    svc:Localized.HeaderKey="Settings.FileStacks.PopoverLayout.Title">
+                                    <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.PopoverLayout.Title"
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailablePopoverLayoutOptions}"
+                                        controls:SettingsComboBox.Value="{Binding PopoverLayout, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding StacksEnabled}"
+                                    IsEnabled="{Binding IsPopoverOpenMode}"
+                                    svc:Localized.DescriptionKey="Settings.FileStacks.PopoverStyle.Description"
+                                    svc:Localized.HeaderKey="Settings.FileStacks.PopoverStyle.Title"
+                                    svc:InfoTip.TitleKey="Settings.FileStacks.PopoverStyle.InfoTip.Title"
+                                    svc:InfoTip.BodyKey="Settings.FileStacks.PopoverStyle.InfoTip.Description">
+                                    <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.PopoverStyle.Title"
+                                        MinWidth="{StaticResource SettingsControlMinWidth}"
+                                        ItemsSource="{Binding AvailablePopoverStyleOptions}"
+                                        controls:SettingsComboBox.Value="{Binding PopoverStyle, Mode=TwoWay}" />
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
+                        </toolkit:SettingsExpander>
+
+                        <toolkit:SettingsExpander
+                            svc:Localized.DescriptionKey="Settings.FileStacks.Auto.Description"
+                            svc:Localized.HeaderKey="Settings.FileStacks.Auto.Title">
+                            <ToggleSwitch svc:Localized.AutomationNameKey="Settings.FileStacks.Auto.Title"  OnContent="" OffContent="" MinWidth="0" IsOn="{Binding AutoStacking, Mode=TwoWay}" />
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard
+                                    HorizontalContentAlignment="Right"
+                                    IsEnabled="{Binding AutoStacking}"
                                     svc:Localized.DescriptionKey="Settings.FileStacks.Threshold.Description"
                                     svc:Localized.HeaderKey="Settings.FileStacks.Threshold.Title">
                                     <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.Threshold.Title"
@@ -1371,12 +1381,9 @@ Text="DeskBox" />
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding StacksEnabled}"
+                                    IsEnabled="{Binding AutoStacking}"
                                     svc:Localized.DescriptionKey="Settings.FileStacks.GroupBy.Description"
                                     svc:Localized.HeaderKey="Settings.FileStacks.GroupBy.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE8CB;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
                                     <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.GroupBy.Title"
                                         MinWidth="{StaticResource SettingsControlMinWidth}"
                                         ItemsSource="{Binding AvailableGroupByOptions}"
@@ -1385,7 +1392,7 @@ Text="DeskBox" />
 
                                 <toolkit:SettingsCard
                                     HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding StacksEnabled}"
+                                    IsEnabled="{Binding AutoStacking}"
                                     Visibility="{Binding ShowCustomRules, Converter={StaticResource SettingsBoolToVisibilityConverter}}"
                                     svc:Localized.DescriptionKey="Settings.FileStacks.Unmatched.Description"
                                     svc:Localized.HeaderKey="Settings.FileStacks.Unmatched.Title">
@@ -1396,58 +1403,14 @@ Text="DeskBox" />
                                 </toolkit:SettingsCard>
 
                                 <toolkit:SettingsCard
-                                    IsEnabled="{Binding StacksEnabled}"
                                     HorizontalContentAlignment="Right"
-                                    svc:Localized.DescriptionKey="Settings.FileStacks.OpenMode.Description"
-                                    svc:Localized.HeaderKey="Settings.FileStacks.OpenMode.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE7E7;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
-                                    <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.OpenMode.Title"
-                                        MinWidth="{StaticResource SettingsControlMinWidth}"
-                                        ItemsSource="{x:Bind AvailableOpenModeOptions, Mode=OneWay}"
-                                        controls:SettingsComboBox.Value="{x:Bind OpenMode, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding StacksEnabled}"
+                                    IsEnabled="{Binding AutoStacking}"
                                     svc:Localized.DescriptionKey="Settings.FileStacks.OrderBy.Description"
                                     svc:Localized.HeaderKey="Settings.FileStacks.OrderBy.Title">
                                     <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.OrderBy.Title"
                                         MinWidth="{StaticResource SettingsControlMinWidth}"
                                         ItemsSource="{Binding AvailableOrderByOptions}"
                                         controls:SettingsComboBox.Value="{Binding OrderBy, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding StacksEnabled}"
-                                    svc:Localized.DescriptionKey="Settings.FileStacks.PopoverLayout.Description"
-                                    svc:Localized.HeaderKey="Settings.FileStacks.PopoverLayout.Title">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE8A9;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
-                                    <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.PopoverLayout.Title"
-                                        MinWidth="{StaticResource SettingsControlMinWidth}"
-                                        ItemsSource="{Binding AvailablePopoverLayoutOptions}"
-                                        controls:SettingsComboBox.Value="{Binding PopoverLayout, Mode=TwoWay}" />
-                                </toolkit:SettingsCard>
-
-                                <toolkit:SettingsCard
-                                    HorizontalContentAlignment="Right"
-                                    IsEnabled="{Binding StacksEnabled}"
-                                    svc:Localized.DescriptionKey="Settings.FileStacks.PopoverStyle.Description"
-                                    svc:Localized.HeaderKey="Settings.FileStacks.PopoverStyle.Title"
-                                    svc:InfoTip.TitleKey="Settings.FileStacks.PopoverStyle.InfoTip.Title"
-                                    svc:InfoTip.BodyKey="Settings.FileStacks.PopoverStyle.InfoTip.Description">
-                                    <toolkit:SettingsCard.HeaderIcon>
-                                        <FontIcon Glyph="&#xE790;" />
-                                    </toolkit:SettingsCard.HeaderIcon>
-                                    <ComboBox svc:Localized.AutomationNameKey="Settings.FileStacks.PopoverStyle.Title"
-                                        MinWidth="{StaticResource SettingsControlMinWidth}"
-                                        ItemsSource="{Binding AvailablePopoverStyleOptions}"
-                                        controls:SettingsComboBox.Value="{Binding PopoverStyle, Mode=TwoWay}" />
                                 </toolkit:SettingsCard>
                             </toolkit:SettingsExpander.Items>
                         </toolkit:SettingsExpander>
@@ -1491,7 +1454,7 @@ Text="DeskBox" />
                                         CanDragItems="True"
                                         CanReorderItems="True"
                                         DragItemsCompleted="FileStackRulesListView_DragItemsCompleted"
-                                        IsEnabled="{Binding StacksEnabled}"
+                                        IsEnabled="{Binding AutoStacking}"
                                         ItemsSource="{x:Bind CustomRules, Mode=OneWay}"
                                         ReorderMode="Enabled"
                                         SelectionMode="None"
@@ -2051,13 +2014,13 @@ Text="DeskBox" />
                                         </Button>
                                     </toolkit:SettingsCard>
                                     <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.ClearRecentDescription" svc:Localized.HeaderKey="Settings.QuickCapture.ClearRecentTitle">
-                                        <Button Click="ClearQuickCaptureRecentButton_Click" Style="{StaticResource ActionButtonStyle}" svc:Localized.ToolTipKey="Settings.QuickCapture.ClearRecentTooltip">
-                                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74D;" FontSize="16" /><TextBlock svc:Localized.Key="Common.Delete" /></StackPanel>
+                                        <Button Click="ClearQuickCaptureRecentButton_Click" Style="{StaticResource DangerActionButtonStyle}" svc:Localized.ToolTipKey="Settings.QuickCapture.ClearRecentTooltip">
+                                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74D;" FontSize="16" Foreground="{ThemeResource SystemFillColorCriticalBrush}" /><TextBlock svc:Localized.Key="Common.Delete" /></StackPanel>
                                         </Button>
                                     </toolkit:SettingsCard>
                                     <toolkit:SettingsCard HorizontalContentAlignment="Right" svc:Localized.DescriptionKey="Settings.QuickCapture.ClearDescription" svc:Localized.HeaderKey="Settings.QuickCapture.ClearTitle">
-                                        <Button Click="ClearQuickCaptureDataButton_Click" Style="{StaticResource ActionButtonStyle}">
-                                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74D;" FontSize="16" /><TextBlock svc:Localized.Key="Common.Delete" /></StackPanel>
+                                        <Button Click="ClearQuickCaptureDataButton_Click" Style="{StaticResource DangerActionButtonStyle}">
+                                            <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE74D;" FontSize="16" Foreground="{ThemeResource SystemFillColorCriticalBrush}" /><TextBlock svc:Localized.Key="Common.Delete" /></StackPanel>
                                         </Button>
                                     </toolkit:SettingsCard>
                                 </toolkit:SettingsExpander.Items>
@@ -2101,6 +2064,37 @@ Text="DeskBox" />
                                     <FontIcon Glyph="&#xE72B;" />
                                 </Button>
                             </StackPanel>
+                        </toolkit:SettingsExpander>
+                        <toolkit:SettingsExpander
+                            Visibility="{Binding IsTodoQingdanSource, Converter={StaticResource SettingsBoolToVisibilityConverter}}"
+                            svc:Localized.HeaderKey="Settings.Todo.DeveloperMode.Title"
+                            svc:Localized.DescriptionKey="Settings.Todo.DeveloperMode.Description"
+                            HorizontalContentAlignment="Stretch">
+                            <ToggleSwitch svc:Localized.AutomationNameKey="Settings.Todo.DeveloperMode.Title"
+                                MinWidth="0"
+                                OffContent=""
+                                OnContent=""
+                                IsOn="{Binding DebugMode, Mode=TwoWay}" />
+                            <toolkit:SettingsExpander.Items>
+                                <toolkit:SettingsCard Visibility="{Binding DebugMode, Converter={StaticResource SettingsBoolToVisibilityConverter}}" svc:Localized.HeaderKey="Settings.Todo.Debug.DataSource">
+                                    <TextBlock MaxWidth="420" Text="{Binding DataSourceText}" TextWrapping="Wrap" />
+                                </toolkit:SettingsCard>
+                                <toolkit:SettingsCard Visibility="{Binding DebugMode, Converter={StaticResource SettingsBoolToVisibilityConverter}}" svc:Localized.HeaderKey="Settings.Todo.Debug.ConnectionState">
+                                    <TextBlock Text="{Binding ConnectionStatusText}" />
+                                </toolkit:SettingsCard>
+                                <toolkit:SettingsCard Visibility="{Binding DebugMode, Converter={StaticResource SettingsBoolToVisibilityConverter}}" svc:Localized.HeaderKey="Settings.Todo.Debug.DatabaseExists">
+                                    <TextBlock Text="{Binding DatabaseExistsText}" />
+                                </toolkit:SettingsCard>
+                                <toolkit:SettingsCard Visibility="{Binding DebugMode, Converter={StaticResource SettingsBoolToVisibilityConverter}}" svc:Localized.HeaderKey="Settings.Todo.Debug.LastSync">
+                                    <TextBlock Text="{Binding LastSyncText}" />
+                                </toolkit:SettingsCard>
+                                <toolkit:SettingsCard Visibility="{Binding DebugMode, Converter={StaticResource SettingsBoolToVisibilityConverter}}" svc:Localized.HeaderKey="Settings.Todo.Debug.TaskCount">
+                                    <TextBlock Text="{Binding TaskCountText}" />
+                                </toolkit:SettingsCard>
+                                <toolkit:SettingsCard Visibility="{Binding DebugMode, Converter={StaticResource SettingsBoolToVisibilityConverter}}" svc:Localized.HeaderKey="Settings.Todo.Debug.ErrorLog">
+                                    <TextBlock MaxWidth="420" Text="{Binding ErrorLogText}" TextWrapping="Wrap" />
+                                </toolkit:SettingsCard>
+                            </toolkit:SettingsExpander.Items>
                         </toolkit:SettingsExpander>
                         <StackPanel Spacing="4">
                             <toolkit:SettingsExpander
@@ -2278,6 +2272,20 @@ Text="DeskBox" />
                                 OffContent=""
                                 MinWidth="0"
                                 IsOn="{Binding EnableCoverHoverMotion, Mode=TwoWay}" />
+                        </toolkit:SettingsCard>
+
+                        <toolkit:SettingsCard
+                            HorizontalContentAlignment="Right"
+                            svc:Localized.DescriptionKey="Settings.Music.HideTimeline.Description"
+                            svc:Localized.HeaderKey="Settings.Music.HideTimeline.Title">
+                            <toolkit:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE823;" />
+                            </toolkit:SettingsCard.HeaderIcon>
+                            <ToggleSwitch svc:Localized.AutomationNameKey="Settings.Music.HideTimeline.Title"
+                                OnContent=""
+                                OffContent=""
+                                MinWidth="0"
+                                IsOn="{Binding HideTimelineWhenUnavailable, Mode=TwoWay}" />
                         </toolkit:SettingsCard>
                     </StackPanel>
                 </StackPanel>
@@ -2811,9 +2819,9 @@ Text="DeskBox" />
                                     </Button>
                                 </StackPanel>
                                 <StackPanel Spacing="3">
-                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" TextWrapping="Wrap" svc:Localized.Key="Settings.DataBackup.Snapshots.Description" />
+                                    <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" TextWrapping="Wrap" MaxWidth="420" svc:Localized.Key="Settings.DataBackup.Snapshots.Description" />
                                 </StackPanel>
-                                <TextBlock x:Name="BackupSnapshotSummaryText" Style="{StaticResource SettingDescriptionTextStyle}" TextWrapping="Wrap" />
+                                <TextBlock x:Name="BackupSnapshotSummaryText" Style="{StaticResource SettingDescriptionTextStyle}" TextWrapping="Wrap" MaxWidth="420" />
                                 <ListView x:Name="BackupSnapshotsList" SelectionMode="None" IsItemClickEnabled="False">
                                     <ListView.ItemTemplate>
                                         <DataTemplate>
@@ -2826,7 +2834,7 @@ Text="DeskBox" />
                                                     <Button Grid.Column="1" Click="RestoreSnapshotButton_Click" IsEnabled="{Binding CanRestore}" Style="{StaticResource ActionButtonStyle}">
                                                         <TextBlock svc:Localized.Key="Settings.DataBackup.Snapshots.Restore" />
                                                     </Button>
-                                                    <Button Grid.Column="2" Click="DeleteSnapshotButton_Click" Style="{StaticResource ActionButtonStyle}">
+                                                    <Button Grid.Column="2" Click="DeleteSnapshotButton_Click" Style="{StaticResource DangerActionButtonStyle}">
                                                         <TextBlock svc:Localized.Key="Settings.DataBackup.Snapshots.Delete" />
                                                     </Button>
                                                 </Grid>
@@ -2913,6 +2921,7 @@ Text="DeskBox" />
                                         Margin="0,2,0,0"
                                         Style="{StaticResource SettingDescriptionTextStyle}"
                                         TextWrapping="Wrap"
+                                        MaxWidth="420"
                                         svc:Localized.Key="Settings.CloudBackup.RemotePath.Hint" />
                                 </StackPanel>
                                 <StackPanel Spacing="4">
@@ -3018,7 +3027,7 @@ Text="DeskBox" />
                                         <StackPanel Orientation="Horizontal" Spacing="8"><FontIcon Glyph="&#xE72C;" FontSize="16" /><TextBlock svc:Localized.Key="Settings.CloudBackup.RefreshSnapshots" /></StackPanel>
                                     </Button>
                                 </StackPanel>
-                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding StatusText}" TextWrapping="Wrap" />
+                                <TextBlock Style="{StaticResource SettingDescriptionTextStyle}" Text="{Binding StatusText}" TextWrapping="Wrap" MaxWidth="420" />
                                 <TextBlock x:Name="CloudBackupSnapshotsEmptyHint" Style="{StaticResource SettingDescriptionTextStyle}" Visibility="Collapsed" svc:Localized.Key="Settings.CloudBackup.SnapshotList.Empty" />
                                 <ListView x:Name="CloudBackupSnapshotsList" SelectionMode="None" IsItemClickEnabled="False" IsEnabled="{Binding ActionsEnabled}">
                                     <ListView.ItemTemplate>
@@ -3033,7 +3042,7 @@ Text="DeskBox" />
                                                         <Button Click="CloudBackupRestoreSnapshotButton_Click" Style="{StaticResource ActionButtonStyle}">
                                                             <TextBlock svc:Localized.Key="Settings.CloudBackup.Restore" />
                                                         </Button>
-                                                        <Button Click="CloudBackupDeleteSnapshotButton_Click" Style="{StaticResource ActionButtonStyle}">
+                                                        <Button Click="CloudBackupDeleteSnapshotButton_Click" Style="{StaticResource DangerActionButtonStyle}">
                                                             <TextBlock svc:Localized.Key="Common.Delete" />
                                                         </Button>
                                                     </StackPanel>
@@ -3221,7 +3230,8 @@ Text="DeskBox" />
                                 <TextBlock
                                     Style="{StaticResource SettingDescriptionTextStyle}"
                                     Text="{Binding RuntimeDetailText}"
-                                    TextWrapping="Wrap" />
+                                    TextWrapping="Wrap"
+                                    MaxWidth="420" />
                                 <StackPanel
                                     HorizontalAlignment="Right"
                                     Orientation="Horizontal"

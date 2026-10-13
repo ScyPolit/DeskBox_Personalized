@@ -8,6 +8,7 @@ using Markdig.Syntax.Inlines;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
@@ -42,6 +43,24 @@ public sealed partial class MarkdownDocumentView : UserControl
         IsTextSelectionEnabled = true,
         TextWrapping = TextWrapping.Wrap
     };
+
+    // RichTextBlock has no GetAlphaMask, so the body cannot cast a shadow
+    // through its own element. The mirror Image overlays the document at the
+    // exact same geometry carrying a snapshot of the rendered text; images DO
+    // expose GetAlphaMask, which lets WidgetTextShadow mask the shadow with
+    // the snapshot's glyph alpha. Opacity 0 keeps it invisible — if the
+    // platform derives the mask from content this still yields the glyph
+    // shape, and in the worst case the shadow simply stays absent (the
+    // pre-feature state).
+    private readonly Grid _contentRoot = new();
+    private readonly Image _shadowMirror = new()
+    {
+        Stretch = Stretch.Fill,
+        IsHitTestVisible = false,
+        Opacity = 0
+    };
+    private int _shadowSnapshotGeneration;
+    private bool _shadowSubscribed;
     private readonly ScrollViewer _scrollViewer = new();
     private readonly MarkdownDocumentService _markdownService;
     private Brush _contentForeground = new SolidColorBrush(Microsoft.UI.Colors.Black);
@@ -70,6 +89,12 @@ public sealed partial class MarkdownDocumentView : UserControl
         _markdownService = markdownService;
         _scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         _scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+        AutomationProperties.SetAccessibilityView(
+            _shadowMirror,
+            AccessibilityView.Raw);
+        WidgetTextShadow.SetCast(_shadowMirror, true);
+        _contentRoot.Children.Add(_shadowMirror);
+        _contentRoot.Children.Add(_documentText);
         ApplyContentHost();
         RegisterPropertyChangedCallback(
             FontSizeProperty,
@@ -84,12 +109,29 @@ public sealed partial class MarkdownDocumentView : UserControl
         {
             _isLoaded = true;
             QueueInvalidatedRender();
+            if (!_shadowSubscribed)
+            {
+                _shadowSubscribed = true;
+                WidgetTextShadow.ShadowSettingChanged += OnShadowSettingChanged;
+            }
         };
         Unloaded += (_, _) =>
         {
             _isLoaded = false;
             ReleaseWidthRenderTimer();
+            if (_shadowSubscribed)
+            {
+                _shadowSubscribed = false;
+                WidgetTextShadow.ShadowSettingChanged -= OnShadowSettingChanged;
+            }
         };
+    }
+
+    private void OnShadowSettingChanged()
+    {
+        // The snapshot only exists while shadows are on; a flip in either
+        // direction needs a render pass to pick up (or drop) the mirror.
+        InvalidateRenderForAppearanceChange("text-shadow");
     }
 
     public static readonly DependencyProperty MarkdownProperty = DependencyProperty.Register(
@@ -308,21 +350,21 @@ public sealed partial class MarkdownDocumentView : UserControl
 
         if (UseInternalScrollViewer)
         {
-            if (!ReferenceEquals(_scrollViewer.Content, _documentText))
+            if (!ReferenceEquals(_scrollViewer.Content, _contentRoot))
             {
-                _scrollViewer.Content = _documentText;
+                _scrollViewer.Content = _contentRoot;
             }
 
             Content = _scrollViewer;
             return;
         }
 
-        if (ReferenceEquals(_scrollViewer.Content, _documentText))
+        if (ReferenceEquals(_scrollViewer.Content, _contentRoot))
         {
             _scrollViewer.Content = null;
         }
 
-        Content = _documentText;
+        Content = _contentRoot;
     }
 
     private void Render()
@@ -407,6 +449,66 @@ public sealed partial class MarkdownDocumentView : UserControl
         _hasRenderedState = true;
         _renderInvalidated = false;
         _renderInvalidationRequiresRender = false;
+        QueueShadowSnapshot();
+    }
+
+    private void QueueShadowSnapshot()
+    {
+        int generation = ++_shadowSnapshotGeneration;
+        _ = UpdateShadowMirrorAsync(generation);
+    }
+
+    private async Task UpdateShadowMirrorAsync(int generation)
+    {
+        if (!WidgetTextShadow.IsEnabled)
+        {
+            _shadowMirror.Source = null;
+            return;
+        }
+
+        // Let the freshly built blocks settle through layout before
+        // measuring and capturing; width-driven re-renders are already
+        // debounced on top of this.
+        await Task.Delay(80);
+        if (generation != _shadowSnapshotGeneration || !_isLoaded)
+        {
+            return;
+        }
+
+        double width = _documentText.ActualWidth;
+        double height = _documentText.ActualHeight;
+        if (width < 1 || height < 1 || width > 4096 || height > 4096)
+        {
+            // RenderTargetBitmap's surface cap: very tall documents keep
+            // rendering without a body shadow instead of truncating.
+            _shadowMirror.Source = null;
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(_documentText.SelectedText))
+        {
+            // A selection highlight would bake an opaque rectangle into the
+            // captured alpha; keep the previous snapshot until selection
+            // clears (the next render refreshes it).
+            return;
+        }
+
+        try
+        {
+            var bitmap = new RenderTargetBitmap();
+            await bitmap.RenderAsync(_documentText);
+            if (generation != _shadowSnapshotGeneration)
+            {
+                return;
+            }
+
+            _shadowMirror.Source = bitmap;
+        }
+        catch (Exception ex)
+        {
+            App.LogVerbose($"[MarkdownDocumentView] Shadow snapshot failed: {ex.Message}");
+            _shadowMirror.Source = null;
+        }
     }
 
     private MarkdownRenderState GetRenderState() => new(
@@ -461,6 +563,9 @@ public sealed partial class MarkdownDocumentView : UserControl
             ? BrushResource("AccentTextFillColorPrimaryBrush")
             : CreateLightThemeSemanticForeground();
         _documentText.Foreground = _contentForeground;
+        WidgetTextShadow.SetEdgeColor(
+            _shadowMirror,
+            (_contentForeground as SolidColorBrush)?.Color);
     }
 
     private bool UsesDarkTheme => NeutralInteractionBrush.IsDarkTheme(this);

@@ -85,6 +85,7 @@ public sealed class SettingsSliceContractBaselineTests
         Assert.True(s.MusicUseArtworkBackdrop);
         Assert.True(s.MusicEnableCoverHoverMotion);
         Assert.Equal("Auto", s.MusicDisplayMode);
+        Assert.True(s.MusicHideTimelineWhenUnavailable);
         Assert.Equal(string.Empty, s.LastQuickCaptureFileWidgetId);
         Assert.True(s.GlobalHotkeyEnabled);
         Assert.Equal(HotkeyActivationKind.Chord, s.GlobalHotkeyActivationKind);
@@ -329,6 +330,7 @@ public sealed class SettingsSliceContractBaselineTests
         "musicUseArtworkBackdrop",
         "musicEnableCoverHoverMotion",
         "musicDisplayMode",
+        "musicHideTimelineWhenUnavailable",
         "lastQuickCaptureFileWidgetId",
         "globalHotkeyEnabled",
         "globalHotkeyActivationKind",

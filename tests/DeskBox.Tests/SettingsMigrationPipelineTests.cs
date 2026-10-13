@@ -288,6 +288,37 @@ public sealed class SettingsMigrationPipelineTests
         Assert.Equal(0.8, settings.WidgetOpacity);
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void VersionFourteen_RetiresTheStackMasterSwitch(
+        bool masterOn,
+        bool persistedAutoStacking,
+        bool expectedAutoStacking)
+    {
+        // Schema 9+ users could still toggle the master off from the settings
+        // page; retiring the switch folds that state onto auto stacking (a
+        // master-off profile saw no stacking — even a stale persisted auto
+        // value was unreachable behind the disabled card — so the closest new
+        // state is auto off with manual stacks back) and pins the master to on.
+        var settings = new AppSettings
+        {
+            SchemaVersion = 13,
+            FileStacksEnabled = masterOn,
+            FileStackAutoStacking = persistedAutoStacking
+        };
+
+        var (migratedSettings, migrationsApplied) = new SettingsMigrationPipeline().RunMigrationsOnCopy(settings);
+        Assert.True(migrationsApplied);
+        settings = migratedSettings;
+
+        Assert.Equal(SettingsMigrationPipeline.CurrentSchemaVersion, settings.SchemaVersion);
+        Assert.True(settings.FileStacksEnabled);
+        Assert.Equal(expectedAutoStacking, settings.FileStackAutoStacking);
+    }
+
     private sealed class TrackedMigration(int fromVersion) : ISettingsMigration
     {
         public int FromVersion => fromVersion;

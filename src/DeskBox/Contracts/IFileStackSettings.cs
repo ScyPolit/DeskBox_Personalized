@@ -3,7 +3,6 @@ using DeskBox.Models;
 namespace DeskBox.Contracts;
 
 public readonly record struct FileStackSettingsSnapshot(
-    bool FileStacksEnabled,
     bool FileStackAutoStacking,
     string FileStackGroupBy,
     int FileStackThreshold,
@@ -15,11 +14,11 @@ public readonly record struct FileStackSettingsSnapshot(
     IReadOnlyList<FileStackCustomRule> FileStackCustomRules);
 
 /// <summary>
-/// Settings-page writes for the file-stack section: the stack master switch,
-/// auto-stacking, the grouping mode (including the custom-rule collection that
-/// only applies in Custom mode), the auto-stack threshold, stack ordering, the
-/// open mode, popover layout and style, and the unmatched-file behavior. The
-/// settings shell keeps every XAML/AOT binding plus the restoring-defaults and
+/// Settings-page writes for the file-stack section: auto-stacking, the
+/// grouping mode (including the custom-rule collection that only applies in
+/// Custom mode), the auto-stack threshold, stack ordering, the open mode,
+/// popover layout and style, and the unmatched-file behavior. The settings
+/// shell keeps every XAML/AOT binding plus the restoring-defaults and
 /// snapshot-application guards that decide whether a callback writes at all,
 /// and maps its rule editors to <see cref="FileStackCustomRule"/> models with
 /// the existing extension-list normalization; this port owns the persisted
@@ -32,8 +31,6 @@ public readonly record struct FileStackSettingsSnapshot(
 public interface IFileStackSettings
 {
     FileStackSettingsSnapshot ReadAll();
-
-    void SetFileStacksEnabled(bool value);
 
     void SetFileStackAutoStacking(bool value);
 

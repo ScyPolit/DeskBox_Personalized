@@ -22,6 +22,13 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private static readonly TimeSpan RevealFullRefreshFreshness =
         TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Grace period before the timeline row collapses for a session that
+    /// publishes no timeline: players burst empty timeline events around
+    /// track changes, and the row must not flash hidden mid-transition.
+    /// </summary>
+    internal static readonly TimeSpan TimelineRowHideDelay = TimeSpan.FromSeconds(2);
+
     private readonly MusicSessionService _musicSessionService;
     private readonly MusicVolumeService _musicVolumeService;
     private readonly LocalizationService _localizationService;
@@ -78,6 +85,9 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     private bool _hasSessionVolume;
     private bool _useArtworkBackdrop = true;
     private bool _enableCoverHoverMotion = true;
+    private bool _hideTimelineWhenUnavailable = true;
+    private bool _timelineRowHidden;
+    private DateTimeOffset? _timelineUnavailableSince;
     private string _displayMode = SettingsService.MusicDisplayModeAuto;
     private Color _artworkColor = AccentColorHelper.DefaultAccentColor;
     private bool _hasArtworkColor;
@@ -140,6 +150,19 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         bool hasCurrentMediaInfo) =>
         hasCurrentMediaInfo &&
         playbackState is (MusicPlaybackState.Playing or MusicPlaybackState.Unknown);
+
+    /// <summary>
+    /// Gate for the "hide the timeline row when the player publishes no
+    /// timeline" preference. Players that never sync SMTC timeline data
+    /// leave the duration at zero; live-style sessions advance a position
+    /// without a duration and must keep their elapsed-time row, so both
+    /// values have to be missing before the row may collapse.
+    /// </summary>
+    internal static bool ShouldHideTimelineRow(
+        bool hideWhenUnavailable,
+        bool hasSeekableTimeline,
+        TimeSpan position) =>
+        hideWhenUnavailable && !hasSeekableTimeline && position <= TimeSpan.Zero;
 
     public ObservableCollection<string> SessionDisplayNames { get; } = [];
 
@@ -238,6 +261,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
                 }
 
                 OnPropertyChanged(nameof(PositionText));
+                UpdateTimelineRowEligibility();
             }
         }
     }
@@ -256,6 +280,7 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
                 // PositionText also depends on Duration (unknown-duration
                 // sessions flip between elapsed time and the placeholder).
                 OnPropertyChanged(nameof(PositionText));
+                UpdateTimelineRowEligibility();
                 if (!_isSeeking)
                 {
                     SeekValue = Math.Clamp(Position.TotalSeconds, 0, SeekMaximum);
@@ -416,6 +441,12 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
     public Visibility SessionPickerVisibility => SessionIds.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility ArtworkBackdropVisibility => UseArtworkBackdrop ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
+    /// Collapses the progress bar and both time labels in every layout when
+    /// the player publishes no timeline and the user opted into hiding it.
+    /// </summary>
+    public Visibility TimelineRowVisibility => _timelineRowHidden ? Visibility.Collapsed : Visibility.Visible;
 
     public CornerRadius ArtworkBackdropCornerRadius => new(GetArtworkBackdropCornerRadius());
 
@@ -907,7 +938,101 @@ public sealed partial class MusicWidgetViewModel : ObservableObject, IDisposable
         UseArtworkBackdrop = settings.MusicUseArtworkBackdrop;
         EnableCoverHoverMotion = settings.MusicEnableCoverHoverMotion;
         DisplayMode = settings.MusicDisplayMode;
+        _hideTimelineWhenUnavailable = settings.Music.MusicHideTimelineWhenUnavailable;
         OnPropertyChanged(nameof(ArtworkBackdropCornerRadius));
+        UpdateTimelineRowEligibility();
+    }
+
+    /// <summary>
+    /// Evaluates the timeline-row hide gate. Showing is always immediate;
+    /// hiding a live session waits out <see cref="TimelineRowHideDelay"/> so
+    /// transient empty-timeline bursts around track changes never flash the
+    /// row away. A missing session skips the grace period — that state is
+    /// stable, and the empty widget should never render the blank row.
+    /// </summary>
+    private void UpdateTimelineRowEligibility()
+    {
+        bool eligible = ShouldHideTimelineRow(_hideTimelineWhenUnavailable, HasSeekableTimeline, Position);
+        if (!eligible)
+        {
+            _timelineUnavailableSince = null;
+            SetTimelineRowHidden(false);
+            return;
+        }
+
+        if (!_hasCurrentMediaInfo)
+        {
+            _timelineUnavailableSince = null;
+            SetTimelineRowHidden(true);
+            return;
+        }
+
+        if (_timelineUnavailableSince is null)
+        {
+            _timelineUnavailableSince = DateTimeOffset.UtcNow;
+            ScheduleTimelineRowHideCheck(_timelineUnavailableSince.Value);
+        }
+    }
+
+    private void ScheduleTimelineRowHideCheck(DateTimeOffset episodeStarted)
+    {
+        if (_dispatcherQueue is null)
+        {
+            // No dispatcher (unit-test hosting): skip the grace period.
+            SetTimelineRowHidden(true);
+            return;
+        }
+
+        _ = HideTimelineRowAfterDelayAsync(episodeStarted);
+    }
+
+    private async Task HideTimelineRowAfterDelayAsync(DateTimeOffset episodeStarted)
+    {
+        try
+        {
+            await Task.Delay(TimelineRowHideDelay);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (_isDisposed || _timelineUnavailableSince != episodeStarted)
+        {
+            return;
+        }
+
+        if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
+        {
+            _dispatcherQueue.TryEnqueue(() => ApplyTimelineRowHideIfStillUnavailable(episodeStarted));
+            return;
+        }
+
+        ApplyTimelineRowHideIfStillUnavailable(episodeStarted);
+    }
+
+    private void ApplyTimelineRowHideIfStillUnavailable(DateTimeOffset episodeStarted)
+    {
+        if (_isDisposed || _timelineUnavailableSince != episodeStarted)
+        {
+            return;
+        }
+
+        if (ShouldHideTimelineRow(_hideTimelineWhenUnavailable, HasSeekableTimeline, Position))
+        {
+            SetTimelineRowHidden(true);
+        }
+    }
+
+    private void SetTimelineRowHidden(bool value)
+    {
+        if (_timelineRowHidden == value)
+        {
+            return;
+        }
+
+        _timelineRowHidden = value;
+        OnPropertyChanged(nameof(TimelineRowVisibility));
     }
 
     private double GetArtworkBackdropCornerRadius()

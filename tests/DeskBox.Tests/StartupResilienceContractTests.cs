@@ -225,11 +225,21 @@ public sealed class StartupResilienceContractTests
         Assert.Contains("finally", shutdown, StringComparison.Ordinal);
         Assert.Contains("Exit();", shutdown, StringComparison.Ordinal);
 
-        // Application.Exit alone leaves the message loop pumping when the
-        // deadline path skips dependent teardown (measured on the probe);
-        // the skipped path must arm an Environment.Exit watchdog.
+        // Application.Exit only requests the XAML loop to stop: the deadline
+        // probe stayed pumping forever after a skipped teardown, and a
+        // completed teardown can still leave foreign threads parking the
+        // process as a silent zombie (feedback 555/556 — tray gone, mutex
+        // released, process resident). Every shutdown path arms the delayed
+        // hard-exit backstop; a healthy Exit() outruns it.
         Assert.Contains("Dependent teardown skipped", shutdown, StringComparison.Ordinal);
-        Assert.Contains("Environment.Exit(0)", shutdown, StringComparison.Ordinal);
+        Assert.Contains("ArmShutdownExitBackstop(", shutdown, StringComparison.Ordinal);
+
+        string backstop = Slice(
+            app,
+            "private static void ArmShutdownExitBackstop",
+            "private async Task ShutdownApplicationAsync");
+        Assert.Contains("Environment.Exit(0)", backstop, StringComparison.Ordinal);
+        Assert.Contains("DrainLogQueue();", backstop, StringComparison.Ordinal);
 
         // The watchdog path must NOT release the single-instance mutex early:
         // the process lives ~3s past the deadline and a new instance starting

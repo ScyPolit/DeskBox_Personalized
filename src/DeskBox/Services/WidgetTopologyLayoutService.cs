@@ -45,23 +45,84 @@ internal sealed class WidgetTopologyLayoutService
         // A capture here means the user placed the surface by hand (drag
         // persist / explicit move): the profile is no longer provisional.
         PromoteProvisionalProfile(topology.Key);
+        Dictionary<WidgetTopologyMonitorProfile, ElasticDisplayPlan> plans = BuildDisplayPlans(settings, profile);
         WidgetGroupConfig? group = WidgetGroupSettings.FindByMember(settings, member.Id);
         if (group is not null)
         {
             string surfaceId = ResolveGroupSurfaceId(group);
-            profile.Surfaces[surfaceId] = PreserveAuthority(
+            profile.Surfaces[surfaceId] = MergeCapturedEntry(
                 profile.Surfaces.GetValueOrDefault(surfaceId),
-                CaptureGroupLayout(group, profile.Monitors));
+                CaptureGroupLayout(group, profile.Monitors),
+                profile.Monitors,
+                plans,
+                IsFixedContentSurface(settings, member, group));
         }
         else
         {
-            profile.Surfaces[member.Id] = PreserveAuthority(
+            profile.Surfaces[member.Id] = MergeCapturedEntry(
                 profile.Surfaces.GetValueOrDefault(member.Id),
-                CaptureWidgetLayout(member, profile.Monitors));
+                CaptureWidgetLayout(member, profile.Monitors),
+                profile.Monitors,
+                plans,
+                IsFixedContentSurface(settings, member, null));
         }
 
         return true;
     }
+
+    private static WidgetSurfaceLayoutProfile MergeCapturedEntry(
+        WidgetSurfaceLayoutProfile? existing,
+        WidgetSurfaceLayoutProfile captured,
+        IReadOnlyList<WidgetTopologyMonitorProfile> monitors,
+        IReadOnlyDictionary<WidgetTopologyMonitorProfile, ElasticDisplayPlan> plans,
+        bool fixedContent)
+    {
+        captured = PreserveAuthority(existing, captured);
+        if (existing?.Reference is { } reference && ProjectionMatches(existing, captured))
+        {
+            captured.Reference = reference.Clone();
+            return captured;
+        }
+
+        WidgetTopologyMonitorProfile? monitor = ResolveRealizationMonitor(captured, monitors);
+        captured.Reference = InvertProjection(
+            captured,
+            monitor,
+            monitor is not null && plans.TryGetValue(monitor, out ElasticDisplayPlan? plan) ? plan : null,
+            fixedContent);
+        return captured;
+    }
+
+    private static bool ProjectionMatches(
+        WidgetSurfaceLayoutProfile existing,
+        WidgetSurfaceLayoutProfile captured) =>
+        string.Equals(existing.PositionAnchor, captured.PositionAnchor, StringComparison.Ordinal) &&
+        NearlyEqual(existing.PositionMarginX, captured.PositionMarginX) &&
+        NearlyEqual(existing.PositionMarginY, captured.PositionMarginY) &&
+        NearlyEqual(existing.Width, captured.Width) &&
+        NearlyEqual(existing.Height, captured.Height) &&
+        string.Equals(
+            existing.PositionMonitorStableId?.Trim(),
+            captured.PositionMonitorStableId?.Trim(),
+            StringComparison.OrdinalIgnoreCase) &&
+        (existing.CompactPlacement, captured.CompactPlacement) switch
+        {
+            (null, null) => true,
+            ({ } left, { } right) =>
+                string.Equals(left.PositionAnchor, right.PositionAnchor, StringComparison.Ordinal) &&
+                NearlyEqual(left.PositionMarginX, right.PositionMarginX) &&
+                NearlyEqual(left.PositionMarginY, right.PositionMarginY),
+            _ => false
+        };
+
+    // HWND pixel quantization moves realized geometry by up to half a
+    // physical pixel (one pixel is 0.8 DIP at 125%). A one-DIP tolerance
+    // absorbs that noise so pure DPI/resolution flips keep the authored
+    // reference untouched, while any deliberate drag (≥ 1 DIP) still
+    // re-captures through the inversion path.
+    private const double CaptureToleranceDips = 1.0;
+
+    private static bool NearlyEqual(double left, double right) => Math.Abs(left - right) < CaptureToleranceDips;
 
     /// <summary>
     /// Captures overwrite geometry but never promote authority (spec 4.2):
@@ -108,6 +169,11 @@ internal sealed class WidgetTopologyLayoutService
 
         bool changed = false;
         string? previousKey = settings.ActiveWidgetTopologyKey;
+        foreach ((string key, WidgetTopologyLayoutProfile profile) in settings.WidgetLayout.WidgetTopologyLayouts)
+        {
+            changed |= profile is not null && UpgradeProfile(key, profile, previousKey);
+        }
+
         bool initialCapture = string.IsNullOrWhiteSpace(previousKey);
         bool targetMonitorProjectionChanged = false;
         bool targetWasSeededFromCompatibleProfile = false;
@@ -754,6 +820,9 @@ internal sealed class WidgetTopologyLayoutService
         WidgetTopologyLayoutProfile profile,
         bool initialAuthoritative = false)
     {
+        Dictionary<WidgetTopologyMonitorProfile, ElasticDisplayPlan> plans = initialAuthoritative
+            ? []
+            : BuildDisplayPlans(settings, profile);
         foreach ((string surfaceId, WidgetConfig config, WidgetGroupConfig? group) in EnumerateSurfaces(settings))
         {
             WidgetSurfaceLayoutProfile captured = group is null
@@ -767,7 +836,12 @@ internal sealed class WidgetTopologyLayoutService
             }
             else
             {
-                captured = PreserveAuthority(profile.Surfaces.GetValueOrDefault(surfaceId), captured);
+                captured = MergeCapturedEntry(
+                    profile.Surfaces.GetValueOrDefault(surfaceId),
+                    captured,
+                    profile.Monitors,
+                    plans,
+                    IsFixedContentSurface(settings, config, group));
             }
 
             profile.Surfaces[surfaceId] = captured;
@@ -778,33 +852,51 @@ internal sealed class WidgetTopologyLayoutService
 
     private static void ApplyProfile(AppSettings settings, WidgetTopologyLayoutProfile profile)
     {
+        List<(string SurfaceId, WidgetConfig Config, WidgetGroupConfig? Group)> surfaces = [];
+        foreach (WidgetGroupConfig group in settings.WidgetGroups)
+        {
+            WidgetConfig? representative = settings.Widgets.FirstOrDefault(widget =>
+                group.MemberIds.Contains(widget.Id, StringComparer.Ordinal));
+            surfaces.Add((
+                ResolveGroupSurfaceId(group),
+                representative ?? new WidgetConfig { Id = group.MemberIds.FirstOrDefault() ?? group.SurfaceId },
+                group));
+        }
+
+        HashSet<string> groupedMemberIds = settings.WidgetGroups
+            .SelectMany(group => group.MemberIds)
+            .ToHashSet(StringComparer.Ordinal);
+        surfaces.AddRange(settings.Widgets
+            .Where(widget => !groupedMemberIds.Contains(widget.Id))
+            .Select(widget => (widget.Id, widget, (WidgetGroupConfig?)null)));
+
         // Activation re-resolves each surface's entry against its intent
         // (spec 5.3): an entry whose screen no longer matches the surface's
         // home / follow-primary intent is re-seeded instead of applied.
-        WidgetSurfaceLayoutProfile ResolveEntry(
-            string surfaceId,
-            WidgetConfig config,
-            WidgetGroupConfig? group)
+        foreach ((string surfaceId, WidgetConfig config, WidgetGroupConfig? group) in surfaces)
         {
-            WidgetSurfaceLayoutProfile entry = ResolveSurfaceEntryForActivation(
+            profile.Surfaces[surfaceId] = ResolveSurfaceEntryForActivation(
                 settings,
                 surfaceId,
                 config,
                 group,
                 profile);
-            RealizeEntryPhysicalCache(entry, profile.Monitors);
-            profile.Surfaces[surfaceId] = entry;
-            return entry;
         }
 
-        foreach (WidgetGroupConfig group in settings.WidgetGroups)
+        Dictionary<WidgetTopologyMonitorProfile, ElasticDisplayPlan> plans = BuildDisplayPlans(settings, profile);
+        foreach ((string surfaceId, WidgetConfig config, WidgetGroupConfig? group) in surfaces)
         {
-            WidgetConfig? representative = settings.Widgets.FirstOrDefault(widget =>
-                group.MemberIds.Contains(widget.Id, StringComparer.Ordinal));
-            WidgetSurfaceLayoutProfile layout = ResolveEntry(
-                ResolveGroupSurfaceId(group),
-                representative ?? new WidgetConfig { Id = group.MemberIds.FirstOrDefault() ?? group.SurfaceId },
-                group);
+            WidgetSurfaceLayoutProfile layout = RealizeEntry(
+                profile.Surfaces[surfaceId],
+                profile.Monitors,
+                plans,
+                IsFixedContentSurface(settings, config, group));
+            profile.Surfaces[surfaceId] = layout;
+            if (group is null)
+            {
+                ApplyToWidget(config, layout);
+                continue;
+            }
 
             ApplyToGroup(group, layout);
             foreach (string memberId in group.MemberIds)
@@ -817,17 +909,352 @@ internal sealed class WidgetTopologyLayoutService
                 }
             }
         }
+    }
 
-        HashSet<string> groupedMemberIds = settings.WidgetGroups
-            .SelectMany(group => group.MemberIds)
-            .ToHashSet(StringComparer.Ordinal);
-        foreach (WidgetConfig widget in settings.Widgets)
+    private static Dictionary<WidgetTopologyMonitorProfile, ElasticDisplayPlan> BuildDisplayPlans(
+        AppSettings settings,
+        WidgetTopologyLayoutProfile profile)
+    {
+        Dictionary<WidgetTopologyMonitorProfile, List<(WidgetSurfaceLayoutReference Reference, bool Occupies)>> placements = [];
+        foreach ((string surfaceId, WidgetConfig config, WidgetGroupConfig? _) in EnumerateSurfaces(settings))
         {
-            if (!groupedMemberIds.Contains(widget.Id))
+            if (!profile.Surfaces.TryGetValue(surfaceId, out WidgetSurfaceLayoutProfile? entry) ||
+                entry is null ||
+                ResolveRealizationMonitor(entry, profile.Monitors) is not { } monitor ||
+                UsableReference(entry, monitor) is not { } reference)
             {
-                ApplyToWidget(widget, ResolveEntry(widget.Id, widget, null));
+                continue;
+            }
+
+            if (!placements.TryGetValue(monitor, out var list))
+            {
+                placements[monitor] = list = [];
+            }
+
+            list.Add((reference, !config.IsDisabled));
+        }
+
+        // Keyed by monitor instance rather than token: degenerate monitors can
+        // share their geo:WxH token while still needing separate plans (e.g.
+        // different DPI), and every lookup resolves through the same
+        // profile.Monitors list instances.
+        Dictionary<WidgetTopologyMonitorProfile, ElasticDisplayPlan> plans = [];
+        foreach (WidgetTopologyMonitorProfile monitor in profile.Monitors)
+        {
+            (double width, double height) = EffectiveWorkArea(monitor);
+            List<(WidgetSurfaceLayoutReference Reference, bool Occupies)> items =
+                placements.GetValueOrDefault(monitor) ?? [];
+            (double frameWidth, double frameHeight) = items.Count == 0
+                ? (width, height)
+                : items
+                    .GroupBy(item => (Math.Round(item.Reference.FrameWidth), Math.Round(item.Reference.FrameHeight)))
+                    .OrderByDescending(frame => frame.Count())
+                    .ThenBy(frame => Math.Abs(frame.Key.Item1 - width) + Math.Abs(frame.Key.Item2 - height))
+                    .Select(frame => (frame.First().Reference.FrameWidth, frame.First().Reference.FrameHeight))
+                    .First();
+            plans[monitor] = ElasticDisplayPlan.Create(
+                frameWidth,
+                frameHeight,
+                width,
+                height,
+                [.. items
+                    .Where(item => item.Occupies)
+                    .Select(item => PlaceRect(item.Reference, frameWidth, frameHeight))]);
+        }
+
+        return plans;
+    }
+
+    private static WidgetSurfaceLayoutProfile RealizeEntry(
+        WidgetSurfaceLayoutProfile entry,
+        IReadOnlyList<WidgetTopologyMonitorProfile> monitors,
+        IReadOnlyDictionary<WidgetTopologyMonitorProfile, ElasticDisplayPlan> plans,
+        bool fixedContent)
+    {
+        WidgetSurfaceLayoutProfile realized = CloneLayout(entry);
+        if (ResolveRealizationMonitor(entry, monitors) is { } monitor &&
+            UsableReference(entry, monitor) is { } reference &&
+            plans.TryGetValue(monitor, out ElasticDisplayPlan? plan))
+        {
+            realized.Reference = reference.Clone();
+            double maxGrow = fixedContent ? WidgetElasticLayout.FixedContentMaxGrowScale : double.PositiveInfinity;
+            ElasticRect rect = PlaceRect(reference, plan.FrameWidth, plan.FrameHeight);
+            realized.PositionAnchor = reference.PositionAnchor;
+            (realized.PositionMarginX, realized.Width) = ProjectAxis(
+                plan.X,
+                rect.Left,
+                rect.Right,
+                IsFarAnchorX(reference.PositionAnchor),
+                reference.PositionMarginX,
+                reference.Width,
+                maxGrow,
+                plan.AdaptiveMinimumWidth);
+            (realized.PositionMarginY, realized.Height) = ProjectAxis(
+                plan.Y,
+                rect.Top,
+                rect.Bottom,
+                IsFarAnchorY(reference.PositionAnchor),
+                reference.PositionMarginY,
+                reference.Height,
+                maxGrow,
+                plan.AdaptiveMinimumHeight);
+            if (realized.CompactPlacement is { } compact &&
+                reference.CompactPositionAnchor is { } compactAnchor &&
+                reference.CompactPositionMarginX is { } compactMarginX &&
+                reference.CompactPositionMarginY is { } compactMarginY)
+            {
+                compact.PositionAnchor = compactAnchor;
+                compact.PositionMarginX = ProjectPoint(plan.X, IsFarAnchorX(compactAnchor), compactMarginX);
+                compact.PositionMarginY = ProjectPoint(plan.Y, IsFarAnchorY(compactAnchor), compactMarginY);
             }
         }
+
+        RealizeEntryPhysicalCache(realized, monitors);
+        return realized;
+    }
+
+    private static (double Margin, double Length) ProjectAxis(
+        ElasticAxisPlan axis,
+        double start,
+        double end,
+        bool anchorFar,
+        double margin,
+        double length,
+        double maxGrow,
+        double minimumLength)
+    {
+        if (axis.IsIdentity)
+        {
+            return (margin, length);
+        }
+
+        (double mappedStart, double mappedEnd) = axis.MapItem(start, end, anchorFar, maxGrow);
+        double mappedLength = Math.Clamp(
+            mappedEnd - mappedStart,
+            Math.Min(minimumLength, axis.TargetLength),
+            axis.TargetLength);
+        double mappedMargin = anchorFar ? axis.TargetLength - mappedEnd : mappedStart;
+        return (Math.Clamp(mappedMargin, 0, Math.Max(0, axis.TargetLength - mappedLength)), mappedLength);
+    }
+
+    private static double ProjectPoint(ElasticAxisPlan axis, bool anchorFar, double margin)
+    {
+        if (axis.IsIdentity)
+        {
+            return margin;
+        }
+
+        double mapped = axis.Map(anchorFar ? axis.ReferenceLength - margin : margin);
+        return Math.Max(0, anchorFar ? axis.TargetLength - mapped : mapped);
+    }
+
+    private static WidgetSurfaceLayoutReference? InvertProjection(
+        WidgetSurfaceLayoutProfile projection,
+        WidgetTopologyMonitorProfile? monitor,
+        ElasticDisplayPlan? plan,
+        bool fixedContent)
+    {
+        WidgetSurfaceLayoutReference? projected = DeriveReference(projection, monitor);
+        if (projected is null || plan is null)
+        {
+            return projected;
+        }
+
+        double maxGrow = fixedContent ? WidgetElasticLayout.FixedContentMaxGrowScale : double.PositiveInfinity;
+        ElasticRect rect = PlaceRect(projected, plan.TargetWidth, plan.TargetHeight);
+        WidgetSurfaceLayoutReference reference = projected.Clone();
+        reference.FrameWidth = plan.FrameWidth;
+        reference.FrameHeight = plan.FrameHeight;
+        (reference.PositionMarginX, reference.Width) = UnprojectAxis(
+            plan.X,
+            rect.Left,
+            rect.Right,
+            IsFarAnchorX(projected.PositionAnchor),
+            projected.PositionMarginX,
+            projected.Width,
+            maxGrow);
+        (reference.PositionMarginY, reference.Height) = UnprojectAxis(
+            plan.Y,
+            rect.Top,
+            rect.Bottom,
+            IsFarAnchorY(projected.PositionAnchor),
+            projected.PositionMarginY,
+            projected.Height,
+            maxGrow);
+        if (projected.CompactPositionAnchor is { } compactAnchor &&
+            projected.CompactPositionMarginX is { } compactMarginX &&
+            projected.CompactPositionMarginY is { } compactMarginY)
+        {
+            reference.CompactPositionMarginX = UnprojectPoint(plan.X, IsFarAnchorX(compactAnchor), compactMarginX);
+            reference.CompactPositionMarginY = UnprojectPoint(plan.Y, IsFarAnchorY(compactAnchor), compactMarginY);
+        }
+
+        return reference;
+    }
+
+    private static (double Margin, double Length) UnprojectAxis(
+        ElasticAxisPlan axis,
+        double start,
+        double end,
+        bool anchorFar,
+        double margin,
+        double length,
+        double maxGrow)
+    {
+        if (axis.IsIdentity)
+        {
+            return (margin, length);
+        }
+
+        (double referenceStart, double referenceEnd) = axis.UnmapItem(start, end, anchorFar, maxGrow);
+        double referenceMargin = anchorFar ? axis.ReferenceLength - referenceEnd : referenceStart;
+        return (Math.Max(0, referenceMargin), Math.Max(1, referenceEnd - referenceStart));
+    }
+
+    private static double UnprojectPoint(ElasticAxisPlan axis, bool anchorFar, double margin)
+    {
+        if (axis.IsIdentity)
+        {
+            return margin;
+        }
+
+        double reference = axis.Unmap(anchorFar ? axis.TargetLength - margin : margin);
+        return Math.Max(0, anchorFar ? axis.ReferenceLength - reference : reference);
+    }
+
+    private static WidgetSurfaceLayoutReference? UsableReference(
+        WidgetSurfaceLayoutProfile entry,
+        WidgetTopologyMonitorProfile monitor) =>
+        entry.Reference is { } reference &&
+        IsCornerAnchor(reference.PositionAnchor) &&
+        double.IsFinite(reference.FrameWidth) && reference.FrameWidth > 0 &&
+        double.IsFinite(reference.FrameHeight) && reference.FrameHeight > 0 &&
+        double.IsFinite(reference.Width) && double.IsFinite(reference.Height) &&
+        double.IsFinite(reference.PositionMarginX) && double.IsFinite(reference.PositionMarginY)
+            ? reference
+            : DeriveReference(entry, monitor);
+
+    private static WidgetSurfaceLayoutReference? DeriveReference(
+        WidgetSurfaceLayoutProfile entry,
+        WidgetTopologyMonitorProfile? monitor)
+    {
+        if (monitor is null ||
+            !IsCornerAnchor(entry.PositionAnchor) ||
+            entry.BoundsCoordinateVersion < WidgetConfig.CurrentBoundsCoordinateVersion ||
+            !double.IsFinite(entry.Width) || !double.IsFinite(entry.Height) ||
+            !double.IsFinite(entry.PositionMarginX) || !double.IsFinite(entry.PositionMarginY))
+        {
+            return null;
+        }
+
+        (double frameWidth, double frameHeight) = EffectiveWorkArea(monitor);
+        var reference = new WidgetSurfaceLayoutReference
+        {
+            FrameWidth = frameWidth,
+            FrameHeight = frameHeight,
+            PositionAnchor = entry.PositionAnchor,
+            PositionMarginX = entry.PositionMarginX,
+            PositionMarginY = entry.PositionMarginY,
+            Width = entry.Width,
+            Height = entry.Height
+        };
+        if (entry.CompactPlacement is { } compact &&
+            IsCornerAnchor(compact.PositionAnchor) &&
+            compact.BoundsCoordinateVersion >= WidgetConfig.CurrentBoundsCoordinateVersion &&
+            double.IsFinite(compact.PositionMarginX) &&
+            double.IsFinite(compact.PositionMarginY))
+        {
+            reference.CompactPositionAnchor = compact.PositionAnchor;
+            reference.CompactPositionMarginX = compact.PositionMarginX;
+            reference.CompactPositionMarginY = compact.PositionMarginY;
+        }
+
+        return reference;
+    }
+
+    private static ElasticRect PlaceRect(
+        WidgetSurfaceLayoutReference reference,
+        double frameWidth,
+        double frameHeight)
+    {
+        double left = IsFarAnchorX(reference.PositionAnchor)
+            ? frameWidth - reference.PositionMarginX - reference.Width
+            : reference.PositionMarginX;
+        double top = IsFarAnchorY(reference.PositionAnchor)
+            ? frameHeight - reference.PositionMarginY - reference.Height
+            : reference.PositionMarginY;
+        return new ElasticRect(left, top, left + reference.Width, top + reference.Height);
+    }
+
+    private static (double Width, double Height) EffectiveWorkArea(WidgetTopologyMonitorProfile monitor) =>
+        (EffectiveExtent(monitor.WorkAreaWidth, monitor.DpiScale),
+         EffectiveExtent(monitor.WorkAreaHeight, monitor.DpiScale));
+
+    private static bool IsCornerAnchor(string? anchor) =>
+        anchor is WidgetPositionAnchors.LeftTop or WidgetPositionAnchors.RightTop or
+            WidgetPositionAnchors.LeftBottom or WidgetPositionAnchors.RightBottom;
+
+    private static bool IsFarAnchorX(string? anchor) =>
+        anchor is WidgetPositionAnchors.RightTop or WidgetPositionAnchors.RightBottom;
+
+    private static bool IsFarAnchorY(string? anchor) =>
+        anchor is WidgetPositionAnchors.LeftBottom or WidgetPositionAnchors.RightBottom;
+
+    private static bool IsFixedContentSurface(
+        AppSettings settings,
+        WidgetConfig config,
+        WidgetGroupConfig? group)
+    {
+        if (group is null)
+        {
+            return IsFixedContentKind(config.WidgetKind);
+        }
+
+        List<WidgetConfig> members = settings.WidgetLayout.Widgets
+            .Where(widget => !widget.IsDisabled && group.MemberIds.Contains(widget.Id, StringComparer.Ordinal))
+            .ToList();
+        return members.Count > 0 && members.All(member => IsFixedContentKind(member.WidgetKind));
+    }
+
+    private static bool IsFixedContentKind(WidgetKind kind) =>
+        kind is WidgetKind.Weather or WidgetKind.Music or WidgetKind.SystemMonitor or WidgetKind.Glance;
+
+    /// <summary>
+    /// Upgrades a pre-elastic profile (spec D11): derives each entry's
+    /// reference from the geometry the profile last saw, and drops
+    /// non-authoritative entries of inactive profiles, whose sizes the old
+    /// ratio mapping baked in; activation re-seeds them unscaled.
+    /// </summary>
+    internal static bool UpgradeProfile(string key, WidgetTopologyLayoutProfile profile, string? activeKey)
+    {
+        if (profile.Version >= WidgetTopologyLayoutProfile.CurrentVersion)
+        {
+            return false;
+        }
+
+        profile.Monitors ??= [];
+        profile.Surfaces ??= [];
+        if (!string.Equals(key, activeKey, StringComparison.Ordinal))
+        {
+            foreach (string seededId in profile.Surfaces
+                         .Where(pair => pair.Value?.IsAuthoritative != true)
+                         .Select(pair => pair.Key)
+                         .ToList())
+            {
+                profile.Surfaces.Remove(seededId);
+            }
+        }
+
+        foreach (WidgetSurfaceLayoutProfile entry in profile.Surfaces.Values)
+        {
+            if (entry is not null)
+            {
+                entry.Reference ??= DeriveReference(entry, ResolveRealizationMonitor(entry, profile.Monitors));
+            }
+        }
+
+        profile.Version = WidgetTopologyLayoutProfile.CurrentVersion;
+        return true;
     }
 
     internal static WidgetSurfaceLayoutProfile MapToTopology(
@@ -842,42 +1269,33 @@ internal sealed class WidgetTopologyLayoutService
             return CloneLayout(source);
         }
 
-        bool sameMonitor = sourceMonitor is not null && MonitorIdentityEquals(sourceMonitor, targetMonitor);
-        double ratioX = sameMonitor || sourceMonitor is null
-            ? 1
-            : EffectiveExtent(targetMonitor.WorkAreaWidth, targetMonitor.DpiScale) /
-              EffectiveExtent(sourceMonitor.WorkAreaWidth, sourceMonitor.DpiScale);
-        double ratioY = sameMonitor || sourceMonitor is null
-            ? 1
-            : EffectiveExtent(targetMonitor.WorkAreaHeight, targetMonitor.DpiScale) /
-              EffectiveExtent(sourceMonitor.WorkAreaHeight, sourceMonitor.DpiScale);
-
-        double targetEffectiveWidth = EffectiveExtent(targetMonitor.WorkAreaWidth, targetMonitor.DpiScale);
-        double targetEffectiveHeight = EffectiveExtent(targetMonitor.WorkAreaHeight, targetMonitor.DpiScale);
+        (double targetEffectiveWidth, double targetEffectiveHeight) = EffectiveWorkArea(targetMonitor);
         var mapped = CloneLayout(source);
+        if (sourceMonitor is not null)
+        {
+            mapped.Reference = UsableReference(source, sourceMonitor)?.Clone();
+        }
+
         mapped.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
+        // Seeding may carry an elastically projected size below the preferred
+        // minimum; clamping here would inflate it back over its neighbours.
         mapped.Width = ClampLogicalSize(
-            source.Width * ratioX,
-            SettingsService.MinWidgetWidth,
+            source.Width,
+            WidgetElasticLayout.AbsoluteMinWidgetSizeDips,
             targetEffectiveWidth);
         mapped.Height = ClampLogicalSize(
-            source.Height * ratioY,
-            SettingsService.MinWidgetHeight,
+            source.Height,
+            WidgetElasticLayout.AbsoluteMinWidgetSizeDips,
             targetEffectiveHeight);
-        mapped.PositionMarginX = Math.Max(0, source.PositionMarginX * ratioX);
-        mapped.PositionMarginY = Math.Max(0, source.PositionMarginY * ratioY);
+        mapped.PositionMarginX = Math.Max(0, source.PositionMarginX);
+        mapped.PositionMarginY = Math.Max(0, source.PositionMarginY);
         mapped.PositionMonitorStableId = targetMonitor.StableId;
         mapped.PositionMonitorDeviceName = targetMonitor.DeviceName;
         mapped.PositionMonitorWasPrimary = targetMonitor.IsPrimary;
         mapped.PositionMonitorKey = CreateWorkAreaKey(targetMonitor);
-        mapped.CompactWidth = source.CompactWidth is { } compactWidth
-            ? Math.Max(WidgetCompactBoundsCalculator.MinWidth, compactWidth * ratioX)
-            : null;
         if (mapped.CompactPlacement is { } compact)
         {
             compact.BoundsCoordinateVersion = WidgetConfig.CurrentBoundsCoordinateVersion;
-            compact.PositionMarginX = Math.Max(0, compact.PositionMarginX * ratioX);
-            compact.PositionMarginY = Math.Max(0, compact.PositionMarginY * ratioY);
             // The capsule is derived from its surface (spec 4.4): migration
             // writes the surface's target-monitor identity into the capsule
             // so a stale capsule reference can never resolve to the old
@@ -999,7 +1417,9 @@ internal sealed class WidgetTopologyLayoutService
             CompactPlacement = CloneCompactPlacement(config.CompactPlacement),
             CompactWidth = config.CompactWidth
         };
-        layout.PositionMonitorStableId = SelectSourceMonitor(layout, monitors)?.StableId;
+        WidgetTopologyMonitorProfile? monitor = SelectSourceMonitor(layout, monitors);
+        layout.PositionMonitorStableId = monitor?.StableId;
+        layout.Reference = DeriveReference(layout, monitor);
         return layout;
     }
 
@@ -1025,7 +1445,9 @@ internal sealed class WidgetTopologyLayoutService
             CompactPlacement = CloneCompactPlacement(group.CompactPlacement),
             CompactWidth = group.CompactWidth
         };
-        layout.PositionMonitorStableId = SelectSourceMonitor(layout, monitors)?.StableId;
+        WidgetTopologyMonitorProfile? monitor = SelectSourceMonitor(layout, monitors);
+        layout.PositionMonitorStableId = monitor?.StableId;
+        layout.Reference = DeriveReference(layout, monitor);
         return layout;
     }
 
@@ -1040,9 +1462,36 @@ internal sealed class WidgetTopologyLayoutService
         WidgetSurfaceLayoutProfile entry,
         IReadOnlyList<WidgetTopologyMonitorProfile> monitors)
     {
-        if (monitors.Count == 0)
+        if (ResolveRealizationMonitor(entry, monitors, logAmbiguity: true) is not { } monitor)
         {
             return;
+        }
+
+        double scale = NormalizeScale(monitor.DpiScale);
+        int width = Math.Max(1, (int)Math.Round(Math.Max(WidgetElasticLayout.AbsoluteMinWidgetSizeDips, entry.Width) * scale));
+        int height = Math.Max(1, (int)Math.Round(Math.Max(WidgetElasticLayout.AbsoluteMinWidgetSizeDips, entry.Height) * scale));
+        bool anchorRight = entry.PositionAnchor is WidgetPositionAnchors.RightTop or WidgetPositionAnchors.RightBottom;
+        bool anchorBottom = entry.PositionAnchor is WidgetPositionAnchors.LeftBottom or WidgetPositionAnchors.RightBottom;
+        int marginX = Math.Max(0, (int)Math.Round(Math.Max(0, entry.PositionMarginX) * scale));
+        int marginY = Math.Max(0, (int)Math.Round(Math.Max(0, entry.PositionMarginY) * scale));
+        entry.X = anchorRight
+            ? monitor.WorkAreaX + monitor.WorkAreaWidth - width - marginX
+            : monitor.WorkAreaX + marginX;
+        entry.Y = anchorBottom
+            ? monitor.WorkAreaY + monitor.WorkAreaHeight - height - marginY
+            : monitor.WorkAreaY + marginY;
+        entry.Width = Math.Max(WidgetElasticLayout.AbsoluteMinWidgetSizeDips, entry.Width);
+        entry.Height = Math.Max(WidgetElasticLayout.AbsoluteMinWidgetSizeDips, entry.Height);
+    }
+
+    private static WidgetTopologyMonitorProfile? ResolveRealizationMonitor(
+        WidgetSurfaceLayoutProfile entry,
+        IReadOnlyList<WidgetTopologyMonitorProfile> monitors,
+        bool logAmbiguity = false)
+    {
+        if (monitors.Count == 0)
+        {
+            return null;
         }
 
         string token = DisplayIdentityTokens.TokenFor(
@@ -1054,46 +1503,32 @@ internal sealed class WidgetTopologyLayoutService
                 DisplayIdentityTokens.TokenFor(candidate),
                 token,
                 StringComparison.OrdinalIgnoreCase)).ToList();
-        WidgetTopologyMonitorProfile? monitor;
-        if (tokenMatches.Count > 1)
+        if (tokenMatches.Count <= 1)
         {
-            // Same-spec degenerate monitors share one geo token: prefer the
-            // candidate whose alias still matches the entry's device-name
-            // hint, then the shared fallback chain.
-            App.Log(
-                $"[DisplayTopology] Monitor token {token} is ambiguous across " +
-                $"{tokenMatches.Count} monitors");
-            monitor = DisplayPlacementResolver.IsDegenerateIdentity(entry.PositionMonitorStableId)
-                ? tokenMatches.FirstOrDefault(candidate => string.Equals(
-                    candidate.DeviceName,
-                    entry.PositionMonitorDeviceName,
-                    StringComparison.OrdinalIgnoreCase))
-                : tokenMatches[0];
-            monitor ??= monitors.FirstOrDefault(candidate => candidate.IsPrimary) ??
-                monitors[0];
-        }
-        else
-        {
-            monitor = tokenMatches.FirstOrDefault() ??
+            return tokenMatches.FirstOrDefault() ??
                 monitors.FirstOrDefault(candidate => candidate.IsPrimary) ??
                 monitors[0];
         }
 
-        double scale = NormalizeScale(monitor.DpiScale);
-        int width = Math.Max(1, (int)Math.Round(Math.Max(SettingsService.MinWidgetWidth, entry.Width) * scale));
-        int height = Math.Max(1, (int)Math.Round(Math.Max(SettingsService.MinWidgetHeight, entry.Height) * scale));
-        bool anchorRight = entry.PositionAnchor is WidgetPositionAnchors.RightTop or WidgetPositionAnchors.RightBottom;
-        bool anchorBottom = entry.PositionAnchor is WidgetPositionAnchors.LeftBottom or WidgetPositionAnchors.RightBottom;
-        int marginX = Math.Max(0, (int)Math.Round(Math.Max(0, entry.PositionMarginX) * scale));
-        int marginY = Math.Max(0, (int)Math.Round(Math.Max(0, entry.PositionMarginY) * scale));
-        entry.X = anchorRight
-            ? monitor.WorkAreaX + monitor.WorkAreaWidth - width - marginX
-            : monitor.WorkAreaX + marginX;
-        entry.Y = anchorBottom
-            ? monitor.WorkAreaY + monitor.WorkAreaHeight - height - marginY
-            : monitor.WorkAreaY + marginY;
-        entry.Width = Math.Max(SettingsService.MinWidgetWidth, entry.Width);
-        entry.Height = Math.Max(SettingsService.MinWidgetHeight, entry.Height);
+        // Same-spec degenerate monitors share one geo token: prefer the
+        // candidate whose alias still matches the entry's device-name
+        // hint, then the shared fallback chain.
+        if (logAmbiguity)
+        {
+            App.Log(
+                $"[DisplayTopology] Monitor token {token} is ambiguous across " +
+                $"{tokenMatches.Count} monitors");
+        }
+
+        WidgetTopologyMonitorProfile? monitor = DisplayPlacementResolver.IsDegenerateIdentity(entry.PositionMonitorStableId)
+            ? tokenMatches.FirstOrDefault(candidate => string.Equals(
+                candidate.DeviceName,
+                entry.PositionMonitorDeviceName,
+                StringComparison.OrdinalIgnoreCase))
+            : tokenMatches[0];
+        return monitor ??
+            monitors.FirstOrDefault(candidate => candidate.IsPrimary) ??
+            monitors[0];
     }
 
     private static void ApplyToWidget(WidgetConfig config, WidgetSurfaceLayoutProfile layout)
@@ -1242,22 +1677,6 @@ internal sealed class WidgetTopologyLayoutService
         return string.Equals(normalizedLeft, normalizedRight, StringComparison.Ordinal);
     }
 
-    private static bool MonitorIdentityEquals(
-        WidgetTopologyMonitorProfile left,
-        WidgetTopologyMonitorProfile right)
-    {
-        string leftStableId = NormalizeStableIdentityForKey(left.StableId);
-        string rightStableId = NormalizeStableIdentityForKey(right.StableId);
-        if (!string.Equals(leftStableId, "geometry-only", StringComparison.Ordinal) &&
-            !string.Equals(rightStableId, "geometry-only", StringComparison.Ordinal))
-        {
-            return string.Equals(leftStableId, rightStableId, StringComparison.Ordinal);
-        }
-
-        return !string.IsNullOrWhiteSpace(left.DeviceName) &&
-            string.Equals(left.DeviceName, right.DeviceName, StringComparison.OrdinalIgnoreCase);
-    }
-
     private static bool MonitorPlacementEquals(
         WidgetTopologyMonitorProfile left,
         WidgetTopologyMonitorProfile right) =>
@@ -1404,7 +1823,8 @@ internal sealed class WidgetTopologyLayoutService
             Width = source.Width,
             Height = source.Height,
             CompactPlacement = CloneCompactPlacement(source.CompactPlacement),
-            CompactWidth = source.CompactWidth
+            CompactWidth = source.CompactWidth,
+            Reference = source.Reference?.Clone()
         };
 
     private static WidgetCompactPlacement? CloneCompactPlacement(WidgetCompactPlacement? source) =>

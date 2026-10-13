@@ -39,9 +39,10 @@ public sealed class SettingsSliceOwnershipContractTests
     [Fact]
     public void EveryFacadeProperty_MapsToExactlyOneSliceProperty()
     {
-        // 237 = batch-51 level (236) plus widgetGroupSwitchAnimationStyle
-        // (group member-switch transition style).
-        Assert.Equal(237, FacadeProperties.Length);
+        // 238 = batch-51 level (236) plus widgetGroupSwitchAnimationStyle
+        // (group member-switch transition style) plus
+        // musicHideTimelineWhenUnavailable (music timeline-row hiding).
+        Assert.Equal(238, FacadeProperties.Length);
 
         foreach (PropertyInfo facade in FacadeProperties)
         {
@@ -398,6 +399,11 @@ public sealed class SettingsSliceOwnershipContractTests
         ["src/DeskBox/Views/SettingsWindow.HotkeyAndAppearance.cs"] = 4,
         ["src/DeskBox/Views/SettingsWindow.Maintenance.cs"] = 3,
         ["src/DeskBox/Views/SettingsWindow.Navigation.cs"] = 3,
+        // The three hits are the Settings.WidgetGroups.DissolveDialog.*
+        // localization key literals reused by the group-picker dissolve
+        // confirmation (same keys the settings page dialog uses), not slice
+        // property reads.
+        ["src/DeskBox/Controls/WidgetGroupTitleSwitcher.xaml.cs"] = 3,
         ["src/DeskBox/Views/WidgetWindowBase.Backdrop.cs"] = 10,
         ["src/DeskBox/Views/WidgetWindowBase.Bounds.cs"] = 3,
         ["src/DeskBox/Views/WidgetWindowBase.Collapse.cs"] = 28,

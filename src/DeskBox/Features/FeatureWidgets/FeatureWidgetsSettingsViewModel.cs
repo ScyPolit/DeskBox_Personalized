@@ -193,6 +193,9 @@ public sealed partial class FeatureWidgetsSettingsViewModel : ObservableObject
     public bool SetMusicEnableCoverHoverMotion(bool value) =>
         _settings.SetMusicEnableCoverHoverMotion(value);
 
+    public bool SetMusicHideTimelineWhenUnavailable(bool value) =>
+        _settings.SetMusicHideTimelineWhenUnavailable(value);
+
     public void ResetMusicPresentationPreferences(bool scheduleSave = true) =>
         _settings.ResetMusicPresentationPreferences(scheduleSave);
 

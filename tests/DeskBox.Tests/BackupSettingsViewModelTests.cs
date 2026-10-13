@@ -222,6 +222,31 @@ public sealed class BackupSettingsViewModelTests
         Assert.Equal(2, attempts);
     }
 
+    [Fact]
+    public async Task SaveCredentialEmptySecret_RejectsInlineWithoutBusyFlip()
+    {
+        int credentialWrites = 0;
+        var fake = new FakeSettings(A)
+        {
+            Credential = (_, _) => Task.FromResult(true),
+            SaveCredential = (_, _, _) => { credentialWrites++; return Task.CompletedTask; }
+        };
+        using var editor = Create(fake);
+        editor.Activate();
+
+        Assert.False(await editor.SaveCredentialAsync("  "));
+        Assert.Equal(BackupPageMessageKind.PasswordEmpty, editor.Message.Kind);
+        Assert.False(editor.IsBusy);
+        Assert.Equal(0, credentialWrites);
+
+        // The trailing snapshot refresh re-projects credential state and may
+        // overwrite the message (PasswordMissing on a fake without one), so
+        // only the side effects are asserted here.
+        Assert.True(await editor.SaveCredentialAsync("secret"));
+        Assert.True(editor.CredentialSaved);
+        Assert.Equal(1, credentialWrites);
+    }
+
     private static BackupSettingsViewModel Create(FakeSettings fake) =>
         new(fake, action => { action(); return true; }, _ => { });
 

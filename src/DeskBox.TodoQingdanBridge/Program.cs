@@ -32,23 +32,36 @@ internal static class BridgeProgram
         using var startup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await pipe.WaitForConnectionAsync(startup.Token);
         using var reader = new StreamReader(pipe, new UTF8Encoding(false), false, 4096, leaveOpen: true);
-        using var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
+        var writer = new StreamWriter(pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
 
-        string? line;
-        while ((line = await reader.ReadLineAsync()) is not null)
+        try
         {
-            BridgeResponse response;
-            try
+            string? line;
+            while ((line = await reader.ReadLineAsync()) is not null)
             {
-                BridgeRequest request = JsonSerializer.Deserialize(line, BridgeJsonContext.Default.BridgeRequest)
-                    ?? throw new InvalidDataException();
-                response = Handle(request, dataRoot, version);
+                BridgeResponse response;
+                try
+                {
+                    BridgeRequest request = JsonSerializer.Deserialize(line, BridgeJsonContext.Default.BridgeRequest)
+                        ?? throw new InvalidDataException();
+                    response = Handle(request, dataRoot, version);
+                }
+                catch
+                {
+                    response = Error(string.Empty, "invalid-request", "The bridge request was invalid.");
+                }
+                await writer.WriteLineAsync(JsonSerializer.Serialize(response, BridgeJsonContext.Default.BridgeResponse));
             }
-            catch
-            {
-                response = Error(string.Empty, "invalid-request", "The bridge request was invalid.");
-            }
-            await writer.WriteLineAsync(JsonSerializer.Serialize(response, BridgeJsonContext.Default.BridgeResponse));
+        }
+        catch (IOException) when (!pipe.IsConnected)
+        {
+            // The DeskBox client owns the bridge lifetime and may close the
+            // pipe immediately after receiving its one response.
+        }
+        finally
+        {
+            try { writer.Dispose(); }
+            catch (IOException) when (!pipe.IsConnected) { }
         }
         return 0;
     }

@@ -629,6 +629,11 @@ public sealed class DeskBoxDataBackupServiceTests : IDisposable
         Assert.True(preparation.HasIntegrityManifest);
         Assert.True(result.HadPendingRestore);
         Assert.True(result.Succeeded, result.ErrorMessage);
+        // The post-restore recovery pass keys off these: a full restore is
+        // the only kind that re-registers startup and rebases profile-local
+        // paths, and the manifest's source data path is its rebase anchor.
+        Assert.Equal(DeskBoxRestoreApplyKind.Full, result.Kind);
+        Assert.Equal(Path.GetFullPath(sourceData), result.SourceDataPath, ignoreCase: true);
         Assert.False(File.Exists(targetService.PendingRestoreMarkerPath));
         string restoredAttachment = Path.Combine(
             targetData,

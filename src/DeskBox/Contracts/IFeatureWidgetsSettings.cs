@@ -39,7 +39,8 @@ public static class MusicDisplayModes
 public sealed record MusicPresentationSettings(
     bool UseArtworkBackdrop,
     bool EnableCoverHoverMotion,
-    string DisplayMode);
+    string DisplayMode,
+    bool HideTimelineWhenUnavailable);
 
 /// <summary>
 /// Immutable read snapshot of the weather presentation preferences, mirroring
@@ -90,6 +91,13 @@ public interface IFeatureWidgetsSettings
     bool SetMusicUseArtworkBackdrop(bool value);
 
     bool SetMusicEnableCoverHoverMotion(bool value);
+
+    /// <summary>
+    /// Writes the "collapse the progress bar and time labels when the player
+    /// publishes no timeline" preference. Skips unchanged writes and schedules
+    /// one debounced save, exactly like the other music presentation setters.
+    /// </summary>
+    bool SetMusicHideTimelineWhenUnavailable(bool value);
 
     /// <summary>
     /// Writes the fresh-install music presentation defaults. Used by the

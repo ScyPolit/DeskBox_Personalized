@@ -61,36 +61,69 @@ public sealed class SettingsAccordionAndOrderingContractTests
 
     // -------------------------------------------------- B. 文件叠放（文件堆叠）
 
-    // Spec B1 + B2: the enable toggle is a SettingsExpander whose header binds
-    // Settings.FileStacks.Enable.Title, and the eight sub-cards sit after it in
-    // the pinned order Auto < Threshold < GroupBy < Unmatched < OpenMode <
-    // OrderBy < PopoverLayout < PopoverStyle.
+    // Spec B1 + B2: the section is headed by the auto-stacking expander
+    // (header binds Settings.FileStacks.Auto.Title with the toggle in the
+    // expander header) whose items are Threshold < GroupBy < Unmatched <
+    // OrderBy, followed by the open-mode expander (header binds
+    // Settings.FileStacks.OpenMode.Title with the combo in the expander
+    // header) whose items are PopoverLayout < PopoverStyle. The retired
+    // master switch and every child-card prefix icon are gone.
     [Fact]
-    public void FileStack_EnableExpander_GroupsTheEightChildCards()
+    public void FileStack_TwoExpanders_GroupTheirChildCards()
     {
         string slice = FileStackSlice();
 
-        Match? expander = FindOpeningTag(
-            slice, "toolkit:SettingsExpander", "HeaderKey=\"Settings.FileStacks.Enable.Title\"");
-        Assert.NotNull(expander);
+        Match? autoExpander = FindOpeningTag(
+            slice, "toolkit:SettingsExpander", "HeaderKey=\"Settings.FileStacks.Auto.Title\"");
+        Assert.NotNull(autoExpander);
+        Match? openModeExpander = FindOpeningTag(
+            slice, "toolkit:SettingsExpander", "HeaderKey=\"Settings.FileStacks.OpenMode.Title\"");
+        Assert.NotNull(openModeExpander);
 
-        AssertAscending(slice, "FileStack child-card ordering",
-            "HeaderKey=\"Settings.FileStacks.Auto.Title\"",
-            "HeaderKey=\"Settings.FileStacks.Threshold.Title\"",
-            "HeaderKey=\"Settings.FileStacks.GroupBy.Title\"",
-            "HeaderKey=\"Settings.FileStacks.Unmatched.Title\"",
-            "HeaderKey=\"Settings.FileStacks.OpenMode.Title\"",
-            "HeaderKey=\"Settings.FileStacks.OrderBy.Title\"",
-            "HeaderKey=\"Settings.FileStacks.PopoverLayout.Title\"",
-            "HeaderKey=\"Settings.FileStacks.PopoverStyle.Title\"");
+        int autoClose = slice.IndexOf(
+            "</toolkit:SettingsExpander>", autoExpander.Index + autoExpander.Length, StringComparison.Ordinal);
+        int openModeClose = slice.IndexOf(
+            "</toolkit:SettingsExpander>", openModeExpander.Index + openModeExpander.Length, StringComparison.Ordinal);
+        Assert.True(autoClose >= 0 && openModeClose >= 0,
+            "FileStack section: both expanders must have closing tags.");
+        Assert.True(openModeClose < autoExpander.Index,
+            "FileStack section: the open-mode expander must come before the auto-stacking expander.");
 
-        int auto = IndexOfOrFail(slice, "HeaderKey=\"Settings.FileStacks.Auto.Title\"", "FileStack section");
-        Assert.True(expander.Index < auto,
-            "FileStack section: the eight child cards must come after the " +
-            "Settings.FileStacks.Enable.Title expander declaration.");
+        // Auto-stacking children live between the auto expander's tags.
+        foreach (string header in new[]
+        {
+             "HeaderKey=\"Settings.FileStacks.Threshold.Title\"",
+             "HeaderKey=\"Settings.FileStacks.GroupBy.Title\"",
+             "HeaderKey=\"Settings.FileStacks.Unmatched.Title\"",
+             "HeaderKey=\"Settings.FileStacks.OrderBy.Title\""
+        })
+        {
+            int index = IndexOfOrFail(slice, header, "FileStack section");
+            Assert.True(autoExpander.Index + autoExpander.Length <= index && index < autoClose,
+                $"FileStack section: {header} must be an item of the auto-stacking expander.");
+        }
 
-        // The old flat enable card header must not linger next to the expander.
+        // Popover-only children live between the open-mode expander's tags.
+        foreach (string header in new[]
+        {
+             "HeaderKey=\"Settings.FileStacks.PopoverLayout.Title\"",
+             "HeaderKey=\"Settings.FileStacks.PopoverStyle.Title\""
+        })
+        {
+            int index = IndexOfOrFail(slice, header, "FileStack section");
+            Assert.True(openModeExpander.Index + openModeExpander.Length <= index && index < openModeClose,
+                $"FileStack section: {header} must be an item of the open-mode expander.");
+        }
+
+        // The retired master switch and the old flat enable card header are
+        // gone; the popover-only cards freeze through IsPopoverOpenMode.
+        Assert.DoesNotContain("HeaderKey=\"Settings.FileStacks.Enable.Title\"", slice, StringComparison.Ordinal);
         Assert.DoesNotContain("HeaderKey=\"Settings.FileStacks.Mode.Title\"", slice, StringComparison.Ordinal);
+        Assert.DoesNotContain("{Binding StacksEnabled", slice, StringComparison.Ordinal);
+        Assert.Contains("IsEnabled=\"{Binding IsPopoverOpenMode}\"", slice, StringComparison.Ordinal);
+
+        // The accordion items keep title + description only — no prefix icons.
+        Assert.DoesNotContain("SettingsCard.HeaderIcon", slice, StringComparison.Ordinal);
     }
 
     // Spec B3: the custom-rules editor stays inside the template.
@@ -506,6 +539,13 @@ public sealed class SettingsAccordionAndOrderingContractTests
 
         Assert.DoesNotContain("Math.Min(1,", source, StringComparison.Ordinal);
         Assert.Contains("AttachManagedStorageSection", source, StringComparison.Ordinal);
+        // The desktop-shortcut card must be detached from the storage panel
+        // before joining this panel: UIElementCollection.Add does not reparent
+        // and throws 0x800F1000 otherwise, aborting the first navigation.
+        Assert.Contains(
+            "storagePanel.Children.Remove(shortcutCard);",
+            source,
+            StringComparison.Ordinal);
     }
 
     // Spec L3: the glance section exposes a 切换-related SettingsExpander

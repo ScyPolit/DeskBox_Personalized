@@ -50,10 +50,12 @@ public sealed class MusicSettingsEditorPilotTests : IDisposable
                 music.MusicDisplayMode = MusicDisplayModes.Cover;
                 music.MusicUseArtworkBackdrop = false;
                 music.MusicEnableCoverHoverMotion = false;
+                music.MusicHideTimelineWhenUnavailable = false;
             });
 
         Assert.False(editor.UseArtworkBackdrop);
         Assert.False(editor.EnableCoverHoverMotion);
+        Assert.False(editor.HideTimelineWhenUnavailable);
         Assert.Equal(MusicDisplayModes.Cover, editor.DisplayMode);
     }
 
@@ -76,13 +78,15 @@ public sealed class MusicSettingsEditorPilotTests : IDisposable
 
         editor.UseArtworkBackdrop = false;
         editor.EnableCoverHoverMotion = false;
+        editor.HideTimelineWhenUnavailable = false;
         editor.DisplayMode = MusicDisplayModes.RecordVertical;
 
         MusicSettingsSlice music = settings.Settings.Music;
         Assert.False(music.MusicUseArtworkBackdrop);
         Assert.False(music.MusicEnableCoverHoverMotion);
+        Assert.False(music.MusicHideTimelineWhenUnavailable);
         Assert.Equal(MusicDisplayModes.RecordVertical, music.MusicDisplayMode);
-        Assert.Equal(3, notified);
+        Assert.Equal(4, notified);
     }
 
     [Fact]
@@ -97,12 +101,14 @@ public sealed class MusicSettingsEditorPilotTests : IDisposable
         music.MusicDisplayMode = MusicDisplayModes.Controls;
         music.MusicUseArtworkBackdrop = false;
         music.MusicEnableCoverHoverMotion = false;
+        music.MusicHideTimelineWhenUnavailable = false;
 
         int notifiedBeforeSync = notified;
         editor.SyncPresentation();
 
         Assert.False(editor.UseArtworkBackdrop);
         Assert.False(editor.EnableCoverHoverMotion);
+        Assert.False(editor.HideTimelineWhenUnavailable);
         Assert.Equal(MusicDisplayModes.Controls, editor.DisplayMode);
         Assert.Equal(notifiedBeforeSync, notified);
     }
@@ -206,6 +212,7 @@ public sealed class MusicSettingsEditorPilotTests : IDisposable
         Assert.Contains("controls:SettingsComboBox.Value=\"{Binding DisplayMode, Mode=TwoWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsOn=\"{Binding UseArtworkBackdrop, Mode=TwoWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("IsOn=\"{Binding EnableCoverHoverMotion, Mode=TwoWay}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("IsOn=\"{Binding HideTimelineWhenUnavailable, Mode=TwoWay}\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("{Binding MusicUseArtworkBackdrop", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("{Binding MusicEnableCoverHoverMotion", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("{Binding SelectedMusicDisplayMode", xaml, StringComparison.Ordinal);
@@ -228,6 +235,7 @@ public sealed class MusicSettingsEditorPilotTests : IDisposable
         Assert.Contains("nameof(DisplayMode)", editorBridge, StringComparison.Ordinal);
         Assert.Contains("nameof(UseArtworkBackdrop)", editorBridge, StringComparison.Ordinal);
         Assert.Contains("nameof(EnableCoverHoverMotion)", editorBridge, StringComparison.Ordinal);
+        Assert.Contains("nameof(HideTimelineWhenUnavailable)", editorBridge, StringComparison.Ordinal);
 
         // External refresh paths re-sync the editor projection instead of
         // assigning shell facade properties.

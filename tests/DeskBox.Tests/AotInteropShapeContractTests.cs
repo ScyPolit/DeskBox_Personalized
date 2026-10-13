@@ -105,6 +105,51 @@ public sealed class AotInteropShapeContractTests
         }
     }
 
+    [Fact]
+    public void WinrtPropertyLookups_AreRootedOrDirect()
+    {
+        // Two shipped regressions of this shape: UISettings.AdvancedEffectsEnabled
+        // was looked up by name only, which Native AOT trims away (retail silently
+        // degraded to "always enabled" — now a direct reference inside the 19041
+        // floor contract), and UIElement.ProtectedCursor is protected in the WinUI
+        // projection, so it must stay a reflection lookup paired with a
+        // DynamicDependency root (the PasswordBox incident's pattern) in exactly
+        // one shared helper.
+        List<string> violations = new();
+        foreach (string path in EnumerateProductSources())
+        {
+            string text = File.ReadAllText(path);
+            if (text.Contains(
+                    "GetProperty(\"AdvancedEffectsEnabled\"",
+                    StringComparison.Ordinal))
+            {
+                violations.Add($"{RelativeToRepository(path)}: GetProperty(\"AdvancedEffectsEnabled\")");
+            }
+
+            if (!text.Contains("GetProperty(\"ProtectedCursor\"", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            bool isTheRootedHelper = text.Contains(
+                    "[DynamicDependency(\"set_ProtectedCursor\"",
+                    StringComparison.Ordinal) &&
+                text.Contains("UiElementCursorHelper");
+            if (!isTheRootedHelper)
+            {
+                violations.Add(
+                    $"{RelativeToRepository(path)}: unrooted ProtectedCursor lookup — " +
+                    "use UiElementCursorHelper.SetCursor");
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "WinRT property lookups must be direct references or reflection paired " +
+            "with a DynamicDependency root — bare name lookups get trimmed from " +
+            "Native AOT retail builds. Violations:\n" + string.Join('\n', violations));
+    }
+
     private static IEnumerable<string> EnumerateProductSources()
     {
         foreach (string path in Directory.EnumerateFiles(

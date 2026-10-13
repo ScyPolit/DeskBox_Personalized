@@ -1,5 +1,6 @@
 // Copyright (c) DeskBox. All rights reserved.
 
+using DeskBox.Helpers;
 using DeskBox.Models;
 using DeskBox.Services;
 using Microsoft.UI.Xaml;
@@ -96,7 +97,11 @@ public sealed partial class HotkeyRecorderDialog : ContentDialog
         {
             Text = localization.T("Settings.HotkeyRecorder.PressKeys"),
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+            // Application-scope themed lookups follow the system theme;
+            // resolve against the dialog's window-scoped theme instead.
+            Foreground = NeutralInteractionBrush.ResolveThemedResource(
+                "TextFillColorSecondaryBrush", this) ??
+                new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x9E, 0x9E, 0x9E)),
             VerticalAlignment = VerticalAlignment.Center
         };
 

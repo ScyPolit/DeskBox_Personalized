@@ -154,6 +154,24 @@ public sealed partial class TodoSettingsViewModel : ObservableObject, IDisposabl
     public bool CanUseDeskBoxReminders => !IsTodoQingdanSource;
     public string ConnectionStatusText => _integration?.ConnectionState ?? "not-checked";
     public string DetectedVersionText => _integration?.DetectedVersion ?? "-";
+    public bool DebugMode
+    {
+        get => _integration?.TodoDebugMode == true;
+        set
+        {
+            if (_integration is null || value == _integration.TodoDebugMode) return;
+            PendingChange = _integration.SetTodoDebugModeAsync(value);
+            OnPropertyChanged();
+        }
+    }
+    public string DataSourceText => _integration?.DataSourcePath ?? "-";
+    public string DatabaseExistsText => (_integration?.DatabaseExists == true).ToString().ToLowerInvariant();
+    public string LastSyncText => _integration?.LastSyncTime?.ToString("G") ?? "-";
+    public string TaskCountText => (_integration?.TaskCount ?? 0).ToString(
+        System.Globalization.CultureInfo.CurrentCulture);
+    public string ErrorLogText => string.IsNullOrWhiteSpace(_integration?.ErrorLog)
+        ? "-"
+        : _integration.ErrorLog;
     public async Task RefreshTodoQingdanCompatibilityAsync()
     {
         if (_integration is null) return;
@@ -175,6 +193,12 @@ public sealed partial class TodoSettingsViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(CanUseDeskBoxReminders));
         OnPropertyChanged(nameof(ConnectionStatusText));
         OnPropertyChanged(nameof(DetectedVersionText));
+        OnPropertyChanged(nameof(DebugMode));
+        OnPropertyChanged(nameof(DataSourceText));
+        OnPropertyChanged(nameof(DatabaseExistsText));
+        OnPropertyChanged(nameof(LastSyncText));
+        OnPropertyChanged(nameof(TaskCountText));
+        OnPropertyChanged(nameof(ErrorLogText));
     }
 
     /// <summary>
