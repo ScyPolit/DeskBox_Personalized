@@ -107,8 +107,7 @@ public sealed class TodoQingdanIntegrationTests : IDisposable
         var factory = new TodoQingdanRepositoryFactory(
             () => (null, sourceRoot, "3.14.2.0"),
             cacheRoot,
-            TestPaths.FromRepository(
-                "src/DeskBox.TodoQingdanBridge/bin/x64/Debug/net10.0/DeskBox.TodoQingdanBridge.exe"));
+            ResolveBridgePathForCurrentTestBuild());
         ITodoRepository repository = factory.ForWidget("todo-widget");
 
         TodoWidgetData online = await repository.LoadAsync();
@@ -147,6 +146,34 @@ public sealed class TodoQingdanIntegrationTests : IDisposable
             VALUES('cached-task','Cached task',NULL,0,1760230800,0,1760230800,1,0,1760230800,1);
             """;
         command.ExecuteNonQuery();
+    }
+
+    private static string ResolveBridgePathForCurrentTestBuild()
+    {
+        string[] segments = Path.GetFullPath(AppContext.BaseDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        int binIndex = Array.FindLastIndex(
+            segments,
+            segment => string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase));
+        if (binIndex < 0 || segments.Length <= binIndex + 3)
+        {
+            throw new InvalidOperationException(
+                $"Cannot derive the Todo Qingdan bridge output from '{AppContext.BaseDirectory}'.");
+        }
+
+        string? runtimeIdentifier = segments
+            .Skip(binIndex + 4)
+            .FirstOrDefault(segment => segment.StartsWith("win-", StringComparison.OrdinalIgnoreCase));
+        return TestPaths.FromRepository(Path.Combine(
+            "src",
+            "DeskBox.TodoQingdanBridge",
+            "bin",
+            segments[binIndex + 1],
+            segments[binIndex + 2],
+            "net10.0",
+            runtimeIdentifier ?? string.Empty,
+            "DeskBox.TodoQingdanBridge.exe"));
     }
 
     private sealed class RecordingFactory : ITodoRepositoryFactory

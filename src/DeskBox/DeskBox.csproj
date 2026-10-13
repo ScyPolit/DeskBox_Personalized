@@ -200,12 +200,13 @@
   <Target Name="BuildTodoQingdanBridge" BeforeTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
     <MSBuild Projects="..\DeskBox.TodoQingdanBridge\DeskBox.TodoQingdanBridge.csproj"
              Targets="Build"
-             Properties="Configuration=$(Configuration);Platform=$(Platform)" />
+             Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)" />
   </Target>
   <Target Name="CopyTodoQingdanBridge" AfterTargets="Build" DependsOnTargets="BuildTodoQingdanBridge" Condition="'$(DesignTimeBuild)' != 'true'">
     <PropertyGroup>
-      <TodoQingdanBridgeBuildDir Condition="'$(Platform)' == 'x64' or '$(Platform)' == 'ARM64'">..\DeskBox.TodoQingdanBridge\bin\$(Platform)\$(Configuration)\net10.0\</TodoQingdanBridgeBuildDir>
-      <TodoQingdanBridgeBuildDir Condition="'$(TodoQingdanBridgeBuildDir)' == ''">..\DeskBox.TodoQingdanBridge\bin\$(Configuration)\net10.0\</TodoQingdanBridgeBuildDir>
+      <TodoQingdanBridgeRuntimeSegment Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)\</TodoQingdanBridgeRuntimeSegment>
+      <TodoQingdanBridgeBuildDir Condition="'$(Platform)' == 'x64' or '$(Platform)' == 'ARM64'">..\DeskBox.TodoQingdanBridge\bin\$(Platform)\$(Configuration)\net10.0\$(TodoQingdanBridgeRuntimeSegment)</TodoQingdanBridgeBuildDir>
+      <TodoQingdanBridgeBuildDir Condition="'$(TodoQingdanBridgeBuildDir)' == ''">..\DeskBox.TodoQingdanBridge\bin\$(Configuration)\net10.0\$(TodoQingdanBridgeRuntimeSegment)</TodoQingdanBridgeBuildDir>
     </PropertyGroup>
     <ItemGroup>
       <TodoQingdanBridgeOutput Include="$(TodoQingdanBridgeBuildDir)**\*" />

@@ -144,8 +144,9 @@ public sealed class TodoQingdanBridgeTests : IDisposable
     }
 
     [Theory]
-    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\x64\Release\net10.0-windows10.0.22621.0\win-x64", @"src\DeskBox.TodoQingdanBridge\bin\x64\Release\net10.0\DeskBox.TodoQingdanBridge.exe")]
-    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\ARM64\Debug\net10.0-windows10.0.22621.0\win-arm64", @"src\DeskBox.TodoQingdanBridge\bin\ARM64\Debug\net10.0\DeskBox.TodoQingdanBridge.exe")]
+    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\x64\Release\net10.0-windows10.0.22621.0\win-x64", @"src\DeskBox.TodoQingdanBridge\bin\x64\Release\net10.0\win-x64\DeskBox.TodoQingdanBridge.exe")]
+    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\ARM64\Debug\net10.0-windows10.0.22621.0\win-arm64", @"src\DeskBox.TodoQingdanBridge\bin\ARM64\Debug\net10.0\win-arm64\DeskBox.TodoQingdanBridge.exe")]
+    [InlineData(@"C:\repo\tests\DeskBox.Tests\bin\x64\Debug\net10.0-windows10.0.22621.0", @"src\DeskBox.TodoQingdanBridge\bin\x64\Debug\net10.0\DeskBox.TodoQingdanBridge.exe")]
     public void ResolveBridgeRelativePathMatchesCurrentTestBuild(
         string testBaseDirectory,
         string expected)
@@ -177,6 +178,9 @@ public sealed class TodoQingdanBridgeTests : IDisposable
 
         string platform = segments[binIndex + 1];
         string configuration = segments[binIndex + 2];
+        string? runtimeIdentifier = segments
+            .Skip(binIndex + 4)
+            .FirstOrDefault(segment => segment.StartsWith("win-", StringComparison.OrdinalIgnoreCase));
         return Path.Combine(
             "src",
             "DeskBox.TodoQingdanBridge",
@@ -184,6 +188,7 @@ public sealed class TodoQingdanBridgeTests : IDisposable
             platform,
             configuration,
             "net10.0",
+            runtimeIdentifier ?? string.Empty,
             "DeskBox.TodoQingdanBridge.exe");
     }
 

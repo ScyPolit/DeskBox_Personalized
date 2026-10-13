@@ -60,6 +60,8 @@ public sealed class TodoQingdanDeliveryContractTests
         Assert.Contains("PublishAot=true", project, StringComparison.Ordinal);
         Assert.Contains("TodoQingdanBridge\\%(RecursiveDir)", project, StringComparison.Ordinal);
         Assert.Contains("TodoQingdanBridgeBuildDir", project, StringComparison.Ordinal);
+        Assert.Contains("RuntimeIdentifier=$(RuntimeIdentifier)", project, StringComparison.Ordinal);
+        Assert.Contains("TodoQingdanBridgeRuntimeSegment", project, StringComparison.Ordinal);
         Assert.Contains("$(TodoQingdanBridgeBuildDir)**\\*", project, StringComparison.Ordinal);
         Assert.Contains("Microsoft.Data.Sqlite", bridgeProject, StringComparison.Ordinal);
     }
